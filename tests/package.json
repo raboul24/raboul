@@ -1,0 +1,7 @@
+{
+  "name": "journal-tests",
+  "private": true,
+  "description": "Browser tests for the calendar journal (front end, PDF export, optional Java server)",
+  "scripts": { "test": "node run-all.js" },
+  "devDependencies": { "playwright": "1.63.0" }
+}

@@ -1,0 +1,37 @@
+const { APP_URL, OUT } = require('./lib');
+const { chromium } = require('playwright');
+(async () => {
+  const b = await chromium.launch(); const p = await b.newPage({acceptDownloads:true, viewport:{width:1200,height:900}}); const errs=[];
+  p.on('pageerror',e=>errs.push(e.message)); p.on('console',m=>{if(m.type()==='error')errs.push(m.text())});
+  await p.goto(APP_URL); await p.click('#settingsBtn');
+  const ok=(c,m)=>console.log(c?'PASS':'FAIL',m);
+  const fp = id => `.fp[data-fp="${id}"]`;
+  await p.click(fp('setFont')+' .fp-btn'); await p.waitForTimeout(500);
+  const info = await p.$$eval(fp('setFont')+' li', els => els.map(e => [e.textContent.replace(' ✓',''), getComputedStyle(e).fontFamily]));
+  ok(info.length>=16,info.length+' body fonts listed');
+  const distinct = new Set(info.map(i=>i[1])).size; ok(distinct===info.length,'each option has its own font-family ('+distinct+')');
+  console.log(info.slice(0,3).map(i=>i.join(' => ')).join(' | '), '|', info.find(i=>/Caveat/.test(i[0])).join(' => '));
+  await p.screenshot({path:OUT+'/fp_open.png'});
+  await p.click(fp('setFont')+' li:has-text("Caveat")'); await p.waitForTimeout(150);
+  ok(await p.evaluate(()=>getComputedStyle(document.documentElement).getPropertyValue('--font').includes('Caveat')),'body font applied');
+  ok(await p.locator(fp('setFont')+' .fp-list').isHidden(),'list closes after pick');
+  ok(/Caveat/.test(await p.getAttribute(fp('setFont')+' .fp-btn','style')),'button shows chosen font');
+  await p.click(fp('setHeadFont')+' .fp-btn'); await p.click(fp('setHeadFont')+' li:has-text("Playfair")');
+  ok(await p.evaluate(()=>getComputedStyle(document.querySelector('.toc a')).fontFamily.includes('Playfair')),'heading font applied');
+  await p.click(fp('setTitleFont')+' .fp-btn'); await p.click(fp('setTitleFont')+' li:has-text("Lora")');
+  ok(await p.evaluate(()=>getComputedStyle(document.querySelector('h1')).fontFamily.includes('Lora')),'title font applied to h1');
+  // keyboard
+  await p.focus(fp('pdfFont')+' .fp-btn'); await p.keyboard.press('ArrowDown'); await p.keyboard.press('ArrowDown'); await p.keyboard.press('Enter'); await p.waitForTimeout(100);
+  console.log('pdf body after keys:', await p.textContent(fp('pdfFont')+' .fp-btn span'));
+  await p.click(fp('pdfFont')+' .fp-btn'); await p.click(fp('pdfFont')+' li:has-text("Lora")');
+  await p.click(fp('pdfHeadFont')+' .fp-btn'); await p.click(fp('pdfHeadFont')+' li:has-text("Playfair")');
+  await p.click(fp('pdfFont')+' .fp-btn'); await p.keyboard.press('Escape'); ok(await p.locator(fp('pdfFont')+' .fp-list').isHidden() && await p.locator('#settings').isVisible(),'Escape closes list but not the drawer');
+  const saved = await p.evaluate(()=>JSON.parse(localStorage.getItem('calendar-journal-v1')));
+  await p.waitForTimeout(300);
+  const st = await p.evaluate(()=>JSON.parse(localStorage.getItem('calendar-journal-v1')).pdf);
+  ok(st.font==='lora' && st.headFont==='playfair','pdf fonts saved: '+JSON.stringify({f:st.font,h:st.headFont}));
+  const [d] = await Promise.all([p.waitForEvent('download'), p.click('#pdfBtn')]); await d.saveAs(OUT+'/fp.pdf');
+  await p.reload(); await p.click('#settingsBtn');
+  ok((await p.textContent(fp('setFont')+' .fp-btn span')).includes('Caveat'),'persisted after reload');
+  console.log('errors',errs); await b.close();
+})();

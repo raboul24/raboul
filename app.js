@@ -120,8 +120,108 @@ function save() {
   clearTimeout(saveTimer);
   saveTimer = setTimeout(() => {
     try { localStorage.setItem(STORE_KEY, JSON.stringify(state)); } catch (e) { /* ignore */ }
+    pushToServer();                      // no-op unless the Java server was found (see below)
   }, 150);
 }
+
+/* ---------- Optional Java backend (see backend/ and README.md) ----------
+   When this page is served by the Java server (http://localhost:8080) the journal is also saved on that
+   server, and a search box appears in Customize. When there is no server (file://, the hosted copy, offline)
+   connectToServer() quietly does nothing and everything keeps using localStorage exactly as before. */
+const server = { on: false, revision: 0, lastJson: null, timer: null, busy: false };
+const REV_KEY = STORE_KEY + '-server-revision';
+
+async function api(path, options = {}, timeoutMs = 4000) {
+  const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), timeoutMs);
+  try { return await fetch(path, { ...options, signal: ctl.signal, headers: { 'Content-Type': 'application/json' } }); }
+  finally { clearTimeout(t); }
+}
+function rememberRevision(rev) {
+  server.revision = rev;
+  try { localStorage.setItem(REV_KEY, String(rev)); } catch (e) { /* ignore */ }
+}
+const hasSavedLocally = () => { try { return localStorage.getItem(STORE_KEY) !== null; } catch (e) { return false; } };
+const norm = s => JSON.stringify({ ...defaultState(), ...s });        // same shape on both sides, so equal journals compare equal
+
+async function connectToServer() {
+  if (!/^https?:$/.test(location.protocol)) return;                   // opened as a file: there is no server
+  try {
+    const r = await api('/api/health', {}, 1500);
+    if (!r.ok || (await r.json()).service !== 'journal-backend') return;   // not our server
+  } catch (e) { return; }                                             // no server, blocked, or offline
+  server.on = true;
+  try { server.revision = Number(localStorage.getItem(REV_KEY)) || 0; } catch (e) { /* ignore */ }
+  try { await syncOnLoad(); } catch (e) { /* stay local if anything goes wrong */ }
+  if (!$('settings').hidden) renderSettings();
+}
+
+/* Decide, once at startup, which copy wins: this browser's or the server's. */
+async function syncOnLoad() {
+  const r = await api('/api/journal');
+  if (r.status === 404) { if (hasSavedLocally()) await doPush(); return; }          // server is empty: upload ours
+  if (!r.ok) return;
+  const remote = await r.json();                                                    // { revision, savedAt, state }
+  if (norm(remote.state) === norm(state)) { rememberRevision(remote.revision); server.lastJson = JSON.stringify(state); return; }
+  if (remote.revision === server.revision) { await doPush(); return; }              // server unchanged since we last synced: our edits are newer
+  if (!hasSavedLocally()) { adopt(remote); return; }                                // brand-new browser: take the server's copy
+  await resolveConflict(remote);                                                    // both changed: ask, never overwrite silently
+}
+function adopt(remote) {
+  state = { ...defaultState(), ...remote.state };
+  try { localStorage.setItem(STORE_KEY, JSON.stringify(state)); } catch (e) { /* ignore */ }
+  rememberRevision(remote.revision);
+  server.lastJson = JSON.stringify(state);
+  applyTheme(); render();
+  if (!$('settings').hidden) renderSettings();
+}
+async function resolveConflict(remote) {
+  const when = new Date(remote.savedAt).toLocaleString();
+  const useServer = await askConfirm(`The server has a different copy of this journal (saved ${when}, revision ${remote.revision}). Use the server copy, or keep this device's version and replace the server's?`, 'Use server copy', 'Keep this device');
+  if (useServer) adopt(remote);
+  else { rememberRevision(remote.revision); await doPush(); }
+}
+function pushToServer() {
+  if (!server.on) return;
+  clearTimeout(server.timer);
+  server.timer = setTimeout(doPush, 800);                            // wait for a pause in typing
+}
+async function doPush() {
+  const body = JSON.stringify(state);
+  if (body === server.lastJson) return;                              // nothing new to send
+  if (server.busy) return pushToServer();
+  server.busy = true;
+  try {
+    const r = await api('/api/journal?baseRevision=' + server.revision, { method: 'PUT', body });
+    if (r.ok) { rememberRevision((await r.json()).revision); server.lastJson = body; }
+    else if (r.status === 409) await resolveConflict(await r.json());
+  } catch (e) { /* server unreachable: keep working locally, we retry on the next save */ }
+  finally { server.busy = false; }
+}
+
+let searchTimer;
+async function runSearch(q) {
+  const box = $('searchResults');
+  if (!box) return;
+  if (!q.trim()) { box.innerHTML = ''; return; }
+  try {
+    clearTimeout(server.timer); await doPush();                      // search the latest text, not the copy from 1 second ago
+    const r = await api('/api/search?q=' + encodeURIComponent(q) + '&limit=20');
+    const hits = r.ok ? await r.json() : [];
+    box.innerHTML = hits.length
+      ? hits.map(h => `<a href="${esc(h.href)}"><strong>${esc(h.title)}</strong><small>${esc(h.snippet)}</small></a>`).join('')
+      : '<p class="hint">No matches.</p>';
+  } catch (e) { box.innerHTML = '<p class="hint">Search is unavailable right now.</p>'; }
+}
+document.addEventListener('input', e => {
+  if (e.target.id !== 'searchInput') return;
+  clearTimeout(searchTimer); const v = e.target.value; searchTimer = setTimeout(() => runSearch(v), 250);
+});
+const serverSection = () => !server.on ? '' : `
+    <h3>Search entries</h3>
+    <input type="search" id="searchInput" placeholder="Search entries and notes…" autocomplete="off">
+    <div class="search-results" id="searchResults"></div>
+    <p class="hint">Also saved on the Java server (revision ${server.revision}).</p>
+`;
 
 /* ---------- Theme ---------- */
 const hexRgb = h => { h = h.replace('#', ''); if (h.length === 3) h = h.split('').map(c => c + c).join(''); return [0, 2, 4].map(i => parseInt(h.substr(i, 2), 16)); };
@@ -189,10 +289,10 @@ let previewMode = false;
 let lastRouteKey = '';
 
 /* In-page replacements for confirm()/alert(), which the hosted viewer disables. */
-function askConfirm(message, okLabel = 'Confirm') {
+function askConfirm(message, okLabel = 'Confirm', cancelLabel = 'Cancel') {
   return new Promise(resolve => {
     const m = $('modal');
-    m.innerHTML = `<div class="modal-card" role="dialog" aria-modal="true"><p>${esc(message)}</p><div class="row"><button class="btn" data-m="no">Cancel</button><button class="btn primary" data-m="yes">${esc(okLabel)}</button></div></div>`;
+    m.innerHTML = `<div class="modal-card" role="dialog" aria-modal="true"><p>${esc(message)}</p><div class="row"><button class="btn" data-m="no">${esc(cancelLabel)}</button><button class="btn primary" data-m="yes">${esc(okLabel)}</button></div></div>`;
     m.hidden = false;
     const done = v => { m.hidden = true; m.innerHTML = ''; m.onclick = null; document.removeEventListener('keydown', onKey); resolve(v); };
     const onKey = e => { if (e.key === 'Escape') done(false); };
@@ -509,6 +609,8 @@ function renderSettings() {
     <label>Planner look<select id="setLook"><option value="elegant"${(state.look || 'elegant') === 'elegant' ? ' selected' : ''}>Elegant (spiral, gold lines)</option><option value="soft"${state.look === 'soft' ? ' selected' : ''}>Soft (rounded, pastel)</option><option value="classic"${state.look === 'classic' ? ' selected' : ''}>Classic (plain)</option></select></label>
     <label>Week starts on<select id="setWeek"><option value="0"${state.weekStart === 0 ? ' selected' : ''}>Sunday</option><option value="1"${state.weekStart === 1 ? ' selected' : ''}>Monday</option></select></label>
 
+    ${serverSection()}
+
     <h3>Calendar presets</h3>
     <div class="presets">${Object.entries(PRESETS).map(([k, p]) =>
       `<button class="btn" data-preset="${k}">${p.label}<small>${p.desc}</small></button>`).join('')}</div>
@@ -674,4 +776,5 @@ $('backBtn').onclick = () => { if (trail.length) go(trail.pop(), true); };
 window.addEventListener('pagehide', () => { try { localStorage.setItem(STORE_KEY, JSON.stringify(state)); } catch (e) { /* ignore */ } });
 
 render();
+connectToServer();                     // looks for the Java server; does nothing if there is none
 })();

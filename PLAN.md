@@ -88,3 +88,9 @@ A zero-dependency web app (static HTML/CSS/JS, open `index.html`) for building y
 - Fonts: Great Vibes (script titles), Cormorant Garamond (+ italic for box labels); new "title font" role in app and PDF.
 - 8 colored pages (Sand, Olive, Sage Mist, Plum, Lilac Mist, Slate, Blue Mist, Cocoa) and 8 procedural covers (Golden Frame, Starry Night, Moonlit Meadow, Wildflower Vines, Crescent Sky, Enchanted Forest, Celestial Arch, Botanical Line) in `covers.js`, drawn identically on canvas and into the PDF.
 - PDF pages: cover; home; calendar (filled mini months); monthly (week tabs, grid, goals + notes boxes); weekly planner (day rows, weekly focus, to-do, notes, W1..W5 selector); daily planner (water/mood/meal trackers, top priority, to-do, notes, 6AM-8PM schedule). Every page has HOME/CALENDAR/MONTH/WEEK/DAY/NOTES tabs, right-edge month tabs and a clickable day-number strip.
+
+## Phase 10 — Optional Java backend
+- `backend/` (Java 21, Spring Boot 3.3.5, Maven): saves the journal to `data/journal.json` with revisions and 10 backups, serves the app, and searches entries/notes. See README.md.
+- `app.js` gained one optional section: `connectToServer()` (no-op without a server), push-after-save, a conflict dialog, and a search box in Customize. `askConfirm` got a `cancelLabel` parameter.
+- The hosted claude.ai copy is unchanged and cannot use the server.
+- `tests/` now holds the browser tests (they used to live outside the repo); `backend/src/test` holds 25 JUnit 5 tests.

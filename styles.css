@@ -294,3 +294,10 @@ body.look-elegant .modal-card, body.look-elegant .settings { border-color: var(-
   .cover-card { max-width: 220px; margin: 0 auto; }
   body.look-elegant .tab { border-radius: 12px 12px 0 0; border-left-width: 1px; border-top: 4px solid var(--tab-color, var(--accent)); }
 }
+
+/* Search results (shown only when the Java server is connected) */
+.settings input[type=search] { width: 100%; padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--paper); }
+.search-results { display: grid; gap: 6px; margin-top: 8px; max-height: 260px; overflow-y: auto; }
+.search-results a { display: block; padding: 6px 10px; border: 1px solid var(--line); border-radius: 10px; text-decoration: none; color: var(--ink); }
+.search-results a:hover { border-color: var(--accent); background: var(--tint); }
+.search-results small { display: block; color: var(--muted); font-size: .78rem; line-height: 1.3; }

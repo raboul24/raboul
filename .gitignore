@@ -1,0 +1,10 @@
+# Java build output
+backend/target/
+
+# Your journal as saved by the Java server (private data, keep it out of git)
+backend/data/
+
+# Test output and installed test tools
+tests/node_modules/
+node_modules/
+*.log
