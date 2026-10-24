@@ -288,6 +288,11 @@ function colorInput(key, label) {
 }
 
 
+const PDF_FONTS = {
+  auto: 'Match journal font', helvetica: 'Sans-serif (Helvetica)', times: 'Serif (Times)', courier: 'Typewriter (Courier)',
+  caveat: 'Caveat (handwriting)', patrickhand: 'Patrick Hand', indieflower: 'Indie Flower', specialelite: 'Special Elite (typewriter)',
+  lora: 'Lora (serif)', merriweather: 'Merriweather (serif)', playfair: 'Playfair Display', quicksand: 'Quicksand (rounded)',
+};
 const NOTE_STYLES = [['blank', 'Blank'], ['lined', 'Lined'], ['dotted', 'Dotted'], ['grid', 'Grid'], ['cornell', 'Cornell notes'], ['checklist', 'Checklist']];
 const pdfOpts = () => ({ ...JournalPDF.DEFAULTS, ...state.pdf });
 function pdfSelect(key, label, options) {
@@ -297,6 +302,7 @@ function pdfSelect(key, label, options) {
 function updatePdfEstimate() {
   const el = $('pdfEst');
   if (!el) return;
+  JournalPDF.ready(state, pdfOpts()).then(() => { const n = JournalPDF.count(state, pdfOpts()); if ($('pdfEst')) $('pdfEst').textContent = `≈ ${n} pages${n > 400 ? ' (large file)' : ''}`; });
   const n = JournalPDF.count(state, pdfOpts());
   el.textContent = `≈ ${n} pages${n > 400 ? ' (large file)' : ''}`;
 }
@@ -356,7 +362,7 @@ function renderSettings() {
 
     <h3>Export to PDF</h3>
     <p class="hint">Makes a hyperlinked PDF you can open in GoodNotes, Notability, Notes+ and similar apps. Tabs, calendar days, weeks and [[links]] stay tappable.</p>
-    ${pdfSelect('font', 'PDF font', { auto: 'Match journal font', helvetica: 'Sans-serif (Helvetica)', times: 'Serif (Times)', courier: 'Typewriter (Courier)' })}
+    ${pdfSelect('font', 'PDF font', PDF_FONTS)}
     ${pdfSelect('size', 'Page size', { a4: 'A4', letter: 'US Letter', tablet: 'Tablet (4:3)' })}
     ${pdfSelect('orient', 'Orientation', { portrait: 'Portrait', landscape: 'Landscape' })}
     ${pdfSelect('weekly', 'Weekly pages', { none: 'None', rows: 'Rows (one line per day)', grid: 'Grid (boxes + notes)', planner: 'Planner (days + priorities)' })}

@@ -58,3 +58,9 @@ A zero-dependency web app (static HTML/CSS/JS, open `index.html`) for building y
 - 16 body fonts (serif, sans, rounded, handwriting, typewriter, mono) via system stacks plus Google Fonts (Lora, Merriweather, Playfair Display, Quicksand, Caveat, Patrick Hand, Indie Flower, Special Elite); each falls back to a system font offline.
 - Separate heading font ("Same as body" by default) and a live sample line.
 - PDF font: Match journal font (auto), Helvetica, Times or Courier — standard PDF fonts, since nothing is embedded.
+
+## Phase 4 — Embedded PDF fonts
+- Bundled, Latin-subset OFL/Apache fonts in `fonts/` (Caveat, Patrick Hand, Indie Flower, Special Elite, Lora, Merriweather, Playfair Display, Quicksand; ~0.5 MB). Licenses alongside. The web app now loads them locally (`@font-face`) instead of from Google, so it works offline.
+- PDF export embeds the chosen font as an Identity-H CID TrueType font (real glyph widths, ToUnicode map so text is searchable/copyable). Font bytes are lazy-loaded from `fonts/<Name>.js` (base64) because `fetch()` is blocked on `file://`.
+- Bold is simulated with a text stroke; small-x-height faces get a size correction.
+- `tools/subset-fonts.py` and `tools/make-font-js.py` regenerate the font files.
