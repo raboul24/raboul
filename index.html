@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Calendar Journal</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header class="topbar">
+  <a class="brand" href="#/tab/index" id="brand">Journal</a>
+  <div class="topbar-actions">
+    <a class="btn" id="todayBtn" href="#/day/today">Today</a>
+    <button class="btn" id="settingsBtn" aria-expanded="false" aria-controls="settings">⚙ Customize</button>
+  </div>
+</header>
+
+<nav class="tabs" id="tabs" aria-label="Journal tabs"></nav>
+
+<main class="book">
+  <article class="page" id="page"></article>
+</main>
+
+<aside class="settings" id="settings" hidden aria-label="Customize journal"></aside>
+
+<script src="app.js"></script>
+</body>
+</html>
