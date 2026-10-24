@@ -53,3 +53,8 @@ A zero-dependency web app (static HTML/CSS/JS, open `index.html`) for building y
 - Options: A4 / Letter / Tablet 4:3, portrait or landscape, theme colors or plain white.
 - Entries are pre-filled onto the pages so the PDF mirrors the journal; handwriting space is left for the pencil.
 - Limit: standard PDF fonts only, so characters outside Latin-1/Windows-1252 export as `?`.
+
+## Phase 3 — Fonts
+- 16 body fonts (serif, sans, rounded, handwriting, typewriter, mono) via system stacks plus Google Fonts (Lora, Merriweather, Playfair Display, Quicksand, Caveat, Patrick Hand, Indie Flower, Special Elite); each falls back to a system font offline.
+- Separate heading font ("Same as body" by default) and a live sample line.
+- PDF font: Match journal font (auto), Helvetica, Times or Courier — standard PDF fonts, since nothing is embedded.

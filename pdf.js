@@ -16,7 +16,7 @@ const M = 36;           // page margin
 const TOP = 52;         // below the tab strip
 const BODY_TOP = 124;   // below title + nav row
 
-const DEFAULTS = { size: 'a4', orient: 'portrait', useTheme: true, weekly: 'rows', daily: 'none', dailyStyle: 'lined', notesStyle: 'lined', notesPages: 2 };
+const DEFAULTS = { font: 'auto', size: 'a4', orient: 'portrait', useTheme: true, weekly: 'rows', daily: 'none', dailyStyle: 'lined', notesStyle: 'lined', notesPages: 2 };
 
 /* ---------- small helpers ---------- */
 const pad = n => String(n).padStart(2, '0');
@@ -48,14 +48,25 @@ function enc(s) {
 const pdfStr = s => '(' + enc(s).replace(/[\\()]/g, m => '\\' + m) + ')';
 const latin1 = s => { const u = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) u[i] = s.charCodeAt(i) & 255; return u; };
 
-/* Text measurement: Arial/Liberation Sans metrics match Helvetica. */
-let measureCtx; const mcache = new Map();
+/* PDF font families (standard 14 fonts, so nothing is embedded). Measured with metric-compatible system fonts. */
+const PDF_FONTS = {
+  helvetica: { base: 'Helvetica', bold: 'Helvetica-Bold', css: 'Helvetica, Arial, "Liberation Sans", sans-serif' },
+  times:     { base: 'Times-Roman', bold: 'Times-Bold', css: '"Times New Roman", Times, "Liberation Serif", serif' },
+  courier:   { base: 'Courier', bold: 'Courier-Bold', css: '"Courier New", Courier, "Liberation Mono", monospace' },
+};
+const SERIF_FIRST = /^(georgia|times new roman|palatino linotype|lora|merriweather|playfair display)$/;
+const MONO_FIRST = /^(ui-monospace|special elite|courier new)$/;
+function autoFont(cssStack) {
+  const first = (cssStack || '').split(',')[0].trim().replace(/["']/g, '').toLowerCase();
+  return SERIF_FIRST.test(first) ? 'times' : MONO_FIRST.test(first) ? 'courier' : 'helvetica';
+}
+let curFont = 'helvetica', measureCtx; const mcache = new Map();
 function tw(s, size, bold) {
-  const k = (bold ? 'b' : 'r') + s;
+  const k = curFont + (bold ? 'b' : 'r') + s;
   let w = mcache.get(k);
   if (w === undefined) {
     measureCtx = measureCtx || document.createElement('canvas').getContext('2d');
-    measureCtx.font = (bold ? 'bold ' : '') + '100px Helvetica, Arial, "Liberation Sans", sans-serif';
+    measureCtx.font = (bold ? 'bold ' : '') + '100px ' + PDF_FONTS[curFont].css;
     w = measureCtx.measureText(enc(s)).width / 100;
     mcache.set(k, w);
   }
@@ -124,6 +135,8 @@ class Pg {
 /* ---------- the document session: plan pages, then draw them ---------- */
 function session(state, optsIn) {
   const o = { ...DEFAULTS, ...optsIn };
+  const fontKey = PDF_FONTS[o.font] ? o.font : autoFont(state.theme.font);
+  curFont = fontKey;
   const [bw, bh] = SIZES[o.size] || SIZES.a4;
   const W = o.orient === 'landscape' ? bh : bw, H = o.orient === 'landscape' ? bw : bh;
   const th = state.theme;
@@ -396,7 +409,7 @@ function session(state, optsIn) {
     ({ index: indexPage, year: yearPage, month: monthPage, week: weekPage, day: dayPage, notes: notesPage })[spec.type](pg, spec);
     return pg;
   };
-  return { specs, first, W, H, draw, count: specs.length };
+  return { specs, first, W, H, draw, fontKey, count: specs.length };
 }
 
 /* ---------- PDF serialisation ---------- */
@@ -409,6 +422,7 @@ async function deflate(str) {
 
 async function generate(state, opts) {
   const S = session(state, opts), n = S.specs.length, W = S.W, H = S.H;
+  curFont = S.fontKey;
   const pages = S.specs.map(S.draw);
   const pageObj = i => 5 + 2 * i, contentObj = i => 6 + 2 * i;
   let next = 5 + 2 * n;                                         // annotation ids start after all page/content objects
@@ -426,8 +440,8 @@ async function generate(state, opts) {
   w('%PDF-1.5\n%\xE2\xE3\xCF\xD3\n');
   obj(1, `<< /Type /Catalog /Pages 2 0 R${outRoot ? ` /Outlines ${outRoot} 0 R /PageMode /UseOutlines` : ''} >>`);
   obj(2, `<< /Type /Pages /Kids [${pages.map((_, i) => pageObj(i) + ' 0 R').join(' ')}] /Count ${n} >>`);
-  obj(3, '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>');
-  obj(4, '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>');
+  obj(3, `<< /Type /Font /Subtype /Type1 /BaseFont /${PDF_FONTS[S.fontKey].base} /Encoding /WinAnsiEncoding >>`);
+  obj(4, `<< /Type /Font /Subtype /Type1 /BaseFont /${PDF_FONTS[S.fontKey].bold} /Encoding /WinAnsiEncoding >>`);
 
   for (let i = 0; i < n; i++) {
     const ann = annots[i].map(a => a.id + ' 0 R').join(' ');

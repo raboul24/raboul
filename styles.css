@@ -148,3 +148,6 @@ button, input, select, textarea { font: inherit; color: inherit; }
   body, .page { background: #fff; box-shadow: none; }
   .page { background-image: none; }
 }
+
+.page h1, .page h3, .brand, .mini h3, .toc a { font-family: var(--font-head, var(--font)); }
+.settings .font-sample { margin: 8px 0 0; padding: 8px; border: 1px dashed var(--line); border-radius: 6px; font-size: 1.05rem; }

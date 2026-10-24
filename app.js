@@ -16,9 +16,21 @@ const THEMES = {
   mono:     { label: 'Mono',     paper: '#ffffff', ink: '#111111', accent: '#444444', bar: '#e6e6e6', today: '#dddddd' },
 };
 const FONTS = {
-  'Serif (Georgia)': 'Georgia, "Times New Roman", serif',
-  'Sans-serif': 'system-ui, -apple-system, "Segoe UI", sans-serif',
-  'Handwritten': '"Segoe Print", "Bradley Hand", "Comic Sans MS", cursive',
+  'Georgia (serif)': 'Georgia, "Times New Roman", serif',
+  'Times': '"Times New Roman", Times, serif',
+  'Palatino': '"Palatino Linotype", Palatino, "Book Antiqua", serif',
+  'Lora': 'Lora, Georgia, serif',
+  'Merriweather': 'Merriweather, Georgia, serif',
+  'Playfair Display': '"Playfair Display", Georgia, serif',
+  'System sans-serif': 'system-ui, -apple-system, "Segoe UI", sans-serif',
+  'Verdana': 'Verdana, Geneva, sans-serif',
+  'Trebuchet': '"Trebuchet MS", Helvetica, sans-serif',
+  'Quicksand (rounded)': 'Quicksand, "Trebuchet MS", sans-serif',
+  'Handwritten (system)': '"Segoe Print", "Bradley Hand", "Comic Sans MS", cursive',
+  'Caveat (handwriting)': 'Caveat, "Segoe Print", "Bradley Hand", cursive',
+  'Patrick Hand': '"Patrick Hand", "Segoe Print", cursive',
+  'Indie Flower': '"Indie Flower", "Segoe Print", cursive',
+  'Typewriter': '"Special Elite", "Courier New", monospace',
   'Monospace': 'ui-monospace, Menlo, Consolas, monospace',
 };
 
@@ -58,7 +70,7 @@ const defaultState = () => ({
   title: 'My Calendar Journal',
   year: new Date().getFullYear(),
   weekStart: 0,
-  theme: { preset: 'classic', ...THEMES.classic, font: Object.values(FONTS)[0] },
+  theme: { preset: 'classic', ...THEMES.classic, font: Object.values(FONTS)[0], headFont: '' },
   tabs: PRESETS.full.build(new Date().getFullYear()),
   days: {},
   notes: {},
@@ -85,7 +97,7 @@ function save() {
 function applyTheme() {
   const r = document.documentElement.style, t = state.theme;
   r.setProperty('--paper', t.paper); r.setProperty('--ink', t.ink); r.setProperty('--accent', t.accent);
-  r.setProperty('--bar', t.bar); r.setProperty('--today', t.today); r.setProperty('--font', t.font);
+  r.setProperty('--bar', t.bar); r.setProperty('--today', t.today); r.setProperty('--font', t.font); r.setProperty('--font-head', t.headFont || t.font);
   $('brand').textContent = state.title;
   document.title = state.title;
 }
@@ -300,6 +312,8 @@ async function exportPdf(btn) {
   btn.disabled = false; btn.textContent = label;
 }
 
+const fontOptions = cur => Object.entries(FONTS).map(([n, f]) => `<option value="${esc(f)}" style="font-family:${esc(f)}"${cur === f ? ' selected' : ''}>${n}</option>`).join('');
+
 function renderSettings() {
   const s = $('settings');
   s.innerHTML = `
@@ -321,7 +335,9 @@ function renderSettings() {
 
     <h3>Custom colors</h3>
     ${colorInput('paper', 'Page paper')}${colorInput('ink', 'Text')}${colorInput('accent', 'Links & accents')}${colorInput('bar', 'Top bar')}${colorInput('today', 'Today highlight')}
-    <label>Font<select id="setFont">${Object.entries(FONTS).map(([n, f]) => `<option value="${esc(f)}"${state.theme.font === f ? ' selected' : ''}>${n}</option>`).join('')}</select></label>
+    <label>Body font<select id="setFont" style="max-width:200px">${fontOptions(state.theme.font)}</select></label>
+    <label>Heading font<select id="setHeadFont" style="max-width:200px"><option value="">Same as body</option>${fontOptions(state.theme.headFont)}</select></label>
+    <p class="font-sample" style="font-family:var(--font)">The quick brown fox jumps over the lazy dog — 0123456789</p>
 
     <h3>Tabs</h3>
     <div id="tabEditor">${state.tabs.map((t, i) => `
@@ -340,6 +356,7 @@ function renderSettings() {
 
     <h3>Export to PDF</h3>
     <p class="hint">Makes a hyperlinked PDF you can open in GoodNotes, Notability, Notes+ and similar apps. Tabs, calendar days, weeks and [[links]] stay tappable.</p>
+    ${pdfSelect('font', 'PDF font', { auto: 'Match journal font', helvetica: 'Sans-serif (Helvetica)', times: 'Serif (Times)', courier: 'Typewriter (Courier)' })}
     ${pdfSelect('size', 'Page size', { a4: 'A4', letter: 'US Letter', tablet: 'Tablet (4:3)' })}
     ${pdfSelect('orient', 'Orientation', { portrait: 'Portrait', landscape: 'Landscape' })}
     ${pdfSelect('weekly', 'Weekly pages', { none: 'None', rows: 'Rows (one line per day)', grid: 'Grid (boxes + notes)', planner: 'Planner (days + priorities)' })}
@@ -381,6 +398,7 @@ document.addEventListener('change', e => {
   if (t.id === 'setYear') { state.year = Math.min(2200, Math.max(1900, +t.value || state.year)); save(); }
   else if (t.id === 'setWeek') { state.weekStart = +t.value; refresh(false); }
   else if (t.id === 'setFont') { state.theme.font = t.value; refresh(false); }
+  else if (t.id === 'setHeadFont') { state.theme.headFont = t.value; refresh(false); }
   else if (t.dataset.tabname !== undefined) { refresh(true); }
   else if (t.id === 'importFile' && t.files[0]) {
     const r = new FileReader();
