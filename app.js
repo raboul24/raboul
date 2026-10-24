@@ -62,6 +62,7 @@ const defaultState = () => ({
   tabs: PRESETS.full.build(new Date().getFullYear()),
   days: {},
   notes: {},
+  pdf: { ...JournalPDF.DEFAULTS },
 });
 
 let state = load();
@@ -274,6 +275,31 @@ function colorInput(key, label) {
   return `<label>${label}<input type="color" data-theme="${key}" value="${state.theme[key]}"></label>`;
 }
 
+
+const NOTE_STYLES = [['blank', 'Blank'], ['lined', 'Lined'], ['dotted', 'Dotted'], ['grid', 'Grid'], ['cornell', 'Cornell notes'], ['checklist', 'Checklist']];
+const pdfOpts = () => ({ ...JournalPDF.DEFAULTS, ...state.pdf });
+function pdfSelect(key, label, options) {
+  const entries = Array.isArray(options) ? options : Object.entries(options);
+  return `<label>${label}<select data-pdf="${key}">${entries.map(([v, n]) => `<option value="${v}"${pdfOpts()[key] === v ? ' selected' : ''}>${n}</option>`).join('')}</select></label>`;
+}
+function updatePdfEstimate() {
+  const el = $('pdfEst');
+  if (!el) return;
+  const n = JournalPDF.count(state, pdfOpts());
+  el.textContent = `≈ ${n} pages${n > 400 ? ' (large file)' : ''}`;
+}
+async function exportPdf(btn) {
+  btn.disabled = true; const label = btn.textContent; btn.textContent = 'Building…';
+  try {
+    const blob = await JournalPDF.generate(state, pdfOpts());
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = (state.title.replace(/[^\w -]+/g, '').trim() || 'calendar-journal') + '.pdf';
+    a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  } catch (err) { alert('PDF export failed: ' + err.message); console.error(err); }
+  btn.disabled = false; btn.textContent = label;
+}
+
 function renderSettings() {
   const s = $('settings');
   s.innerHTML = `
@@ -312,6 +338,18 @@ function renderSettings() {
       <button class="btn" id="addYear">+ Year tab</button>
     </div>
 
+    <h3>Export to PDF</h3>
+    <p class="hint">Makes a hyperlinked PDF you can open in GoodNotes, Notability, Notes+ and similar apps. Tabs, calendar days, weeks and [[links]] stay tappable.</p>
+    ${pdfSelect('size', 'Page size', { a4: 'A4', letter: 'US Letter', tablet: 'Tablet (4:3)' })}
+    ${pdfSelect('orient', 'Orientation', { portrait: 'Portrait', landscape: 'Landscape' })}
+    ${pdfSelect('weekly', 'Weekly pages', { none: 'None', rows: 'Rows (one line per day)', grid: 'Grid (boxes + notes)', planner: 'Planner (days + priorities)' })}
+    ${pdfSelect('daily', 'Daily pages', { none: 'None', entries: 'Only days with entries', all: 'Every day' })}
+    ${pdfSelect('dailyStyle', 'Daily page style', NOTE_STYLES.concat([['schedule', 'Hourly schedule + to-do']]))}
+    ${pdfSelect('notesStyle', 'Notes page style', NOTE_STYLES)}
+    <label>Pages per notes tab<input type="number" data-pdf="notesPages" min="1" max="30" value="${pdfOpts().notesPages}" style="width:70px"></label>
+    <label>Use theme colors<input type="checkbox" data-pdf="useTheme"${pdfOpts().useTheme ? ' checked' : ''}></label>
+    <div class="row"><button class="btn primary" id="pdfBtn">Export PDF</button><span class="hint" id="pdfEst"></span></div>
+
     <h3>Data</h3>
     <div class="row">
       <button class="btn" id="exportBtn">Export JSON</button>
@@ -321,6 +359,7 @@ function renderSettings() {
     </div>
     <input type="file" id="importFile" accept="application/json" hidden>
     <p class="hint">Everything is saved automatically in this browser.</p>`;
+  updatePdfEstimate();
 }
 
 function refresh(withSettings) { applyTheme(); render(); if (withSettings) renderSettings(); save(); }
@@ -335,6 +374,10 @@ document.addEventListener('input', e => {
 
 document.addEventListener('change', e => {
   const t = e.target;
+  if (t.dataset.pdf) {
+    state.pdf = { ...pdfOpts(), [t.dataset.pdf]: t.type === 'checkbox' ? t.checked : t.type === 'number' ? Math.min(30, Math.max(1, +t.value || 1)) : t.value };
+    save(); updatePdfEstimate(); return;
+  }
   if (t.id === 'setYear') { state.year = Math.min(2200, Math.max(1900, +t.value || state.year)); save(); }
   else if (t.id === 'setWeek') { state.weekStart = +t.value; refresh(false); }
   else if (t.id === 'setFont') { state.theme.font = t.value; refresh(false); }
@@ -391,6 +434,7 @@ document.addEventListener('click', e => {
     a.download = 'calendar-journal.json'; a.click(); URL.revokeObjectURL(a.href);
   } else if (b.id === 'importBtn') $('importFile').click();
   else if (b.id === 'printBtn') window.print();
+  else if (b.id === 'pdfBtn') exportPdf(b);
   else if (b.id === 'resetBtn') {
     if (!confirm('Erase everything and start over?')) return;
     state = defaultState(); location.hash = '#/tab/index'; refresh(true);

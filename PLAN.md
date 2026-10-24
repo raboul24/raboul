@@ -44,3 +44,12 @@ A zero-dependency web app (static HTML/CSS/JS, open `index.html`) for building y
 4. Settings drawer: theme, colors, tabs editor, presets, import/export/print.
 5. Test in headless Chromium (navigation, links, presets, theming, persistence).
 6. Commit and push.
+
+## Phase 2 — PDF export for note-taking apps
+- `pdf.js`: dependency-free PDF writer (Helvetica, Flate-compressed streams). Every page carries a tab strip whose tabs are internal links; PDF bookmarks list the tabs.
+- Linked pages: index, year (month names + every day), month (day cells + week buttons + prev/next), weekly, daily, notes. `[[links]]` in entries become tappable links.
+- Weekly layouts: Rows, Grid (boxes + notes), Planner (days + priorities + notes). Daily pages: none / days with entries / every day.
+- Note styles for daily and notes pages: Blank, Lined, Dotted, Grid, Cornell, Checklist (daily also: Hourly schedule + to-do).
+- Options: A4 / Letter / Tablet 4:3, portrait or landscape, theme colors or plain white.
+- Entries are pre-filled onto the pages so the PDF mirrors the journal; handwriting space is left for the pencil.
+- Limit: standard PDF fonts only, so characters outside Latin-1/Windows-1252 export as `?`.
