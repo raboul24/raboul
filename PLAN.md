@@ -72,3 +72,9 @@ A zero-dependency web app (static HTML/CSS/JS, open `index.html`) for building y
 ## Phase 6 — Hosting
 - `artifact.html` is the publish entry (same app, no document wrapper). Published as a private claude.ai artifact with the `downloads` capability.
 - Hosted-viewer adaptations (also fine standalone): in-page routing with a Back button (the viewer ignores `#/path` navigation), in-page confirm dialog and toast (native `confirm`/`alert` are disabled), file saves go through `claude.use("downloads")` with an anchor fallback, Print button removed (PDF export replaces it).
+
+## Phase 7 — Soft planner look
+- Reference listing (Etsy "Digital Life Planner") could not be opened from this environment, so the look follows the common hyperlinked-planner style: pastel palettes, side tabs, rounded cards, washi tape, banner titles.
+- New pastel themes (Blush default, Sage, Boho, Sky, Lilac, Linen), each with a tab palette; picking a theme recolors the tabs ("Match tab colors to theme" re-applies it).
+- Web app: tabs down the right edge (top row on phones), dotted paper, banner headings with tape, rounded shadowed cells and cards.
+- PDF "Planner look": Soft (default) or Classic. Soft adds a rounded page card on a tinted mat, rotated side tabs, banner + tape titles, rounded cells/cards with shadows, month pills on the year page, rounded checkboxes.

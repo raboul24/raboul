@@ -7,6 +7,12 @@ const DOWS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 const MONTH_COLORS = ['#5b7fa6','#8e6bb0','#4f9d8a','#6aa84f','#c9a227','#e0873a','#d9534f','#c2548d','#a0663c','#7a8b3c','#4c7aa0','#5d6d7e'];
 
 const THEMES = {
+  blush:    { label: 'Blush',    paper: '#fffaf6', ink: '#4a3b3b', accent: '#d98c8c', bar: '#f6e1dc', today: '#fde5c8', tabs: ['#e8a5a5','#f2c6a0','#b9d2a8','#a8cbd6','#c9b6e0','#e6b8cf'] },
+  sage:     { label: 'Sage',     paper: '#fbfcf7', ink: '#34423a', accent: '#7fa383', bar: '#e4ecd9', today: '#f3ecc2', tabs: ['#9bb89a','#c5d3a5','#e3d3a0','#d9b79c','#a9c4c0','#8fb0a3'] },
+  boho:     { label: 'Boho',     paper: '#fdf8f1', ink: '#4b3a2f', accent: '#c2815b', bar: '#f1e3d0', today: '#f6dfb0', tabs: ['#c2815b','#d9a566','#a8a77a','#8e6f5a','#d0b8a0','#b58a8a'] },
+  sky:      { label: 'Sky',      paper: '#f7fbff', ink: '#2f4157', accent: '#6f9fd1', bar: '#dcebf8', today: '#fff1bf', tabs: ['#8fb8e0','#a9d3d6','#b9c6ec','#c8b9e6','#9fcfbf','#f0c4cf'] },
+  lilac:    { label: 'Lilac',    paper: '#fbf9ff', ink: '#3d3552', accent: '#a08cd0', bar: '#e9e2f7', today: '#fce8c4', tabs: ['#b7a5e0','#d2b3d9','#a9b8e6','#e6b5c8','#9fcad0','#cbb8f0'] },
+  linen:    { label: 'Linen',    paper: '#fbf8f3', ink: '#3f3f3a', accent: '#8a8f80', bar: '#ebe6db', today: '#efe2c0', tabs: ['#a3a898','#c4b8a4','#b3a39b','#9aa7a0','#cdbfae','#8f9a8e'] },
   classic:  { label: 'Classic',  paper: '#fffdf7', ink: '#2b2a33', accent: '#c0563b', bar: '#efe6d2', today: '#ffe08a' },
   midnight: { label: 'Midnight', paper: '#1f2230', ink: '#e8e8f0', accent: '#7aa2f7', bar: '#161824', today: '#3b4261' },
   ocean:    { label: 'Ocean',    paper: '#f4fbfd', ink: '#17323d', accent: '#0e7c9b', bar: '#cfe9f1', today: '#ffe9a8' },
@@ -34,6 +40,18 @@ const FONTS = {
   'Monospace': 'ui-monospace, Menlo, Consolas, monospace',
 };
 
+/* Give every tab a color from the theme's palette (months cycle through it, the year tab uses the accent). */
+function recolorTabs(tabs, theme) {
+  const pal = theme.tabs && theme.tabs.length ? theme.tabs : MONTH_COLORS;
+  let n = 0;
+  tabs.forEach(t => {
+    if (t.kind === 'month') t.color = pal[t.month % pal.length];
+    else if (t.kind === 'year') t.color = theme.accent;
+    else if (t.kind === 'index') t.color = pal[pal.length - 1];
+    else t.color = pal[(n++ + 2) % pal.length];
+  });
+  return tabs;
+}
 const uid = () => Math.random().toString(36).slice(2, 9);
 const pad = n => String(n).padStart(2, '0');
 const dateKey = (y, m, d) => `${y}-${pad(m + 1)}-${pad(d)}`;
@@ -70,8 +88,8 @@ const defaultState = () => ({
   title: 'My Calendar Journal',
   year: new Date().getFullYear(),
   weekStart: 0,
-  theme: { preset: 'classic', ...THEMES.classic, font: Object.values(FONTS)[0], headFont: '' },
-  tabs: PRESETS.full.build(new Date().getFullYear()),
+  theme: { preset: 'blush', ...THEMES.blush, font: FONTS['Quicksand (rounded)'], headFont: FONTS['Playfair Display'] },
+  tabs: recolorTabs(PRESETS.full.build(new Date().getFullYear()), THEMES.blush),
   days: {},
   notes: {},
   pdf: { ...JournalPDF.DEFAULTS },
@@ -396,6 +414,8 @@ function renderSettings() {
         <button class="btn small danger" data-del="${i}" title="Delete tab">✕</button>
       </div>`).join('')}</div>
     <div class="row">
+      <button class="btn" id="recolorBtn">Match colors to theme</button>
+      <button class="btn" id="recolorBtn" title="Recolor every tab from the current theme">Match tab colors to theme</button>
       <button class="btn" id="addNotes">+ Notes tab</button>
       <button class="btn" id="addMonth">+ Month tab</button>
       <button class="btn" id="addYear">+ Year tab</button>
@@ -403,6 +423,7 @@ function renderSettings() {
 
     <h3>Export to PDF</h3>
     <p class="hint">Makes a hyperlinked PDF you can open in GoodNotes, Notability, Notes+ and similar apps. Tabs, calendar days, weeks and [[links]] stay tappable.</p>
+    ${pdfSelect('look', 'Planner look', { soft: 'Soft planner (rounded, side tabs)', classic: 'Classic (top tabs, square)' })}
     ${pdfSelect('font', 'PDF body font', PDF_FONTS)}
     ${pdfSelect('headFont', 'PDF heading font', { auto: 'Match journal heading font', same: 'Same as body (bold)', ...Object.fromEntries(Object.entries(PDF_FONTS).filter(([k]) => k !== 'auto')) })}
     ${pdfSelect('size', 'Page size', { a4: 'A4', letter: 'US Letter', tablet: 'Tablet (4:3)' })}
@@ -471,11 +492,12 @@ document.addEventListener('click', async e => {
     const keep = state.tabs.filter(t => t.kind === 'notes' && (state.notes[t.id] || '').trim());
     const fresh = PRESETS[d.preset].build(state.year);
     const names = new Set(fresh.map(t => t.name.toLowerCase()));
-    state.tabs = [...fresh, ...keep.filter(t => !names.has(t.name.toLowerCase()))];
+    state.tabs = recolorTabs([...fresh, ...keep.filter(t => !names.has(t.name.toLowerCase()))], THEMES[state.theme.preset] || { accent: state.theme.accent });
     go('#/tab/index', true); refresh(true);
   } else if (d.themepreset) {
     const t = THEMES[d.themepreset];
     Object.assign(state.theme, { preset: d.themepreset, paper: t.paper, ink: t.ink, accent: t.accent, bar: t.bar, today: t.today });
+    recolorTabs(state.tabs, t);
     refresh(true);
   } else if (d.up !== undefined || d.down !== undefined) {
     const i = +(d.up ?? d.down), j = d.up !== undefined ? i - 1 : i + 1;
@@ -486,6 +508,8 @@ document.addEventListener('click', async e => {
     state.tabs.splice(+d.del, 1); delete state.notes[t.id];
     if (!tabById(parseRoute().arg) && parseRoute().kind === 'tab') go('#/tab/index', true);
     refresh(true);
+  } else if (b.id === 'recolorBtn') {
+    recolorTabs(state.tabs, THEMES[state.theme.preset] || { accent: state.theme.accent }); refresh(true);
   } else if (b.id === 'addNotes') {
     const t = mk(`Page ${state.tabs.length + 1}`, 'notes', '#777'); state.tabs.push(t); refresh(true);
   } else if (b.id === 'addMonth') {
