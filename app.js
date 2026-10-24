@@ -7,6 +7,14 @@ const DOWS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 const MONTH_COLORS = ['#5b7fa6','#8e6bb0','#4f9d8a','#6aa84f','#c9a227','#e0873a','#d9534f','#c2548d','#a0663c','#7a8b3c','#4c7aa0','#5d6d7e'];
 
 const THEMES = {
+  pageSand:     { group: 'page', label: 'Sand',      paper: '#f5efe3', ink: '#4a4036', accent: '#b59a6b', bar: '#e9dfcc', today: '#e8d7ae', tabs: ['#c9b48a','#b59a6b','#a58b5e','#d3c3a0','#9a8660','#bfae8a'] },
+  pageOlive:    { group: 'page', label: 'Olive',     paper: '#7f8d62', ink: '#fbf7e8', accent: '#ecdfae', bar: '#6a774f', today: '#98a678', tabs: ['#c8d19e','#dfe5bf','#b4c08a','#e8dba8','#a2b07a','#d5cf9a'] },
+  pageSage:     { group: 'page', label: 'Sage Mist', paper: '#d3d9c4', ink: '#2f3a2c', accent: '#7b8a5e', bar: '#c3cbb0', today: '#e4e9d2', tabs: ['#9aa97f','#b2bf98','#869570','#c4cfae','#7a8a64','#a8b58e'] },
+  pagePlum:     { group: 'page', label: 'Plum',      paper: '#5b4b80', ink: '#f5effc', accent: '#dcc9a0', bar: '#4a3c6b', today: '#7b69a5', tabs: ['#b8a6dc','#cdbfe8','#a592cc','#ddd2f0','#9482bd','#c2b2e2'] },
+  pageLilac:    { group: 'page', label: 'Lilac Mist', paper: '#c6badf', ink: '#2e2548', accent: '#6c56a3', bar: '#b5a7d3', today: '#ded5ef', tabs: ['#9a86c8','#b3a3d8','#8672b8','#c8bce4','#7762aa','#ad9cd2'] },
+  pageSlate:    { group: 'page', label: 'Slate',     paper: '#52667a', ink: '#f1f5f8', accent: '#e4d2a6', bar: '#43566a', today: '#6f879c', tabs: ['#9db3c6','#b8c8d6','#8aa1b6','#cbd8e3','#7c93a9','#adc0d0'] },
+  pageMist:     { group: 'page', label: 'Blue Mist', paper: '#93a8b3', ink: '#1f2e37', accent: '#f5ebcf', bar: '#82979f', today: '#b4c4cc', tabs: ['#cfdde4','#e3ecf0','#bccfd8','#f0f5f7','#a9bdc8','#dbe6ec'] },
+  pageCocoa:    { group: 'page', label: 'Cocoa',     paper: '#7a6355', ink: '#f7efe5', accent: '#e6d2ab', bar: '#69534a', today: '#977d6d', tabs: ['#d3bda3','#e3d2bb','#c1a98d','#ecdfcd','#b09579','#dccbb2'] },
   blush:    { label: 'Blush',    paper: '#fffaf6', ink: '#4a3b3b', accent: '#d98c8c', bar: '#f6e1dc', today: '#fde5c8', tabs: ['#e8a5a5','#f2c6a0','#b9d2a8','#a8cbd6','#c9b6e0','#e6b8cf'] },
   sage:     { label: 'Sage',     paper: '#fbfcf7', ink: '#34423a', accent: '#7fa383', bar: '#e4ecd9', today: '#f3ecc2', tabs: ['#9bb89a','#c5d3a5','#e3d3a0','#d9b79c','#a9c4c0','#8fb0a3'] },
   boho:     { label: 'Boho',     paper: '#fdf8f1', ink: '#4b3a2f', accent: '#c2815b', bar: '#f1e3d0', today: '#f6dfb0', tabs: ['#c2815b','#d9a566','#a8a77a','#8e6f5a','#d0b8a0','#b58a8a'] },
@@ -22,6 +30,8 @@ const THEMES = {
   mono:     { label: 'Mono',     paper: '#ffffff', ink: '#111111', accent: '#444444', bar: '#e6e6e6', today: '#dddddd' },
 };
 const FONTS = {
+  'Cormorant Garamond': '"Cormorant Garamond", Georgia, serif',
+  'Great Vibes (script)': '"Great Vibes", cursive',
   'Georgia (serif)': 'Georgia, "Times New Roman", serif',
   'Times': '"Times New Roman", Times, serif',
   'Palatino': '"Palatino Linotype", Palatino, "Book Antiqua", serif',
@@ -88,8 +98,10 @@ const defaultState = () => ({
   title: 'My Calendar Journal',
   year: new Date().getFullYear(),
   weekStart: 0,
-  theme: { preset: 'blush', ...THEMES.blush, font: FONTS['Quicksand (rounded)'], headFont: FONTS['Playfair Display'] },
-  tabs: recolorTabs(PRESETS.full.build(new Date().getFullYear()), THEMES.blush),
+  look: 'elegant',
+  cover: 'frame',
+  theme: { preset: 'pageSand', ...THEMES.pageSand, font: FONTS['Cormorant Garamond'], headFont: '', titleFont: FONTS['Great Vibes (script)'] },
+  tabs: recolorTabs(PRESETS.full.build(new Date().getFullYear()), THEMES.pageSand),
   days: {},
   notes: {},
   pdf: { ...JournalPDF.DEFAULTS },
@@ -112,10 +124,23 @@ function save() {
 }
 
 /* ---------- Theme ---------- */
+const hexRgb = h => { h = h.replace('#', ''); if (h.length === 3) h = h.split('').map(c => c + c).join(''); return [0, 2, 4].map(i => parseInt(h.substr(i, 2), 16)); };
+const mixHex = (a, b, t) => { const A = hexRgb(a), B = hexRgb(b); return '#' + A.map((v, i) => Math.round(v * (1 - t) + B[i] * t).toString(16).padStart(2, '0')).join(''); };
+const lumOf = h => { const [r, g, b] = hexRgb(h); return (0.299 * r + 0.587 * g + 0.114 * b) / 255; };
 function applyTheme() {
   const r = document.documentElement.style, t = state.theme;
   r.setProperty('--paper', t.paper); r.setProperty('--ink', t.ink); r.setProperty('--accent', t.accent);
   r.setProperty('--bar', t.bar); r.setProperty('--today', t.today); r.setProperty('--font', t.font); r.setProperty('--font-head', t.headFont || t.font);
+  r.setProperty('--font-title', t.titleFont || t.headFont || t.font);
+  const light = lumOf(t.paper) > 0.5;
+  r.setProperty('--legend', light ? mixHex(t.accent, t.ink, 0.5) : mixHex(t.accent, '#ffffff', 0.25));
+  r.setProperty('--titlec', light ? mixHex(t.accent, t.ink, 0.3) : t.accent);
+  r.setProperty('--cell', light ? mixHex(t.accent, t.paper, 0.78) : mixHex(t.paper, '#ffffff', 0.1));
+  r.setProperty('--goldsoft', mixHex(t.accent, t.paper, 0.5));
+  r.setProperty('--onaccent', lumOf(t.accent) > 0.62 ? '#2b2b2b' : '#ffffff');
+  r.setProperty('--coil', mixHex(t.accent, t.ink, 0.2));
+  r.setProperty('--bind', mixHex(t.paper, t.ink, 0.07));
+  document.body.classList.toggle('look-elegant', (state.look || 'elegant') === 'elegant');
   $('brand').textContent = state.title;
   document.title = state.title;
 }
@@ -225,8 +250,23 @@ function render() {
     $('page').style.setProperty('--page-color', tab.color);
   }
   renderTabs(activeId);
+  renderSections(route, activeId);
   $('page').innerHTML = page;
+  const cc = $('coverCanvas'); if (cc) drawCoverCard(cc);
   bindPage(route);
+}
+
+/* elegant look: HOME / CALENDAR / MONTH / TODAY / NOTES tabs across the top, like the printed planners */
+function renderSections(route, activeId) {
+  const el = $('sections'); if (!el) return;
+  const idx = state.tabs.find(t => t.kind === 'index'), yr = state.tabs.find(t => t.kind === 'year'), nt = state.tabs.find(t => t.kind === 'notes');
+  const now = new Date(), mt = state.tabs.find(t => t.kind === 'month' && t.year === now.getFullYear() && t.month === now.getMonth()) || state.tabs.find(t => t.kind === 'month');
+  const act = tab => tab && tab.id === activeId;
+  const items = [
+    idx && ['Home', `#/tab/${idx.id}`, act(idx)], yr && ['Calendar', `#/tab/${yr.id}`, act(yr)], mt && ['Month', `#/tab/${mt.id}`, route.kind === 'tab' && act(mt)],
+    ['Today', '#/day/today', route.kind === 'day'], nt && ['Notes', `#/tab/${nt.id}`, act(nt)],
+  ].filter(Boolean);
+  el.innerHTML = items.map(([label, href, on]) => `<a href="${href}" class="${on ? 'active' : ''}">${label}</a>`).join('');
 }
 
 function renderTabs(activeId) {
@@ -239,12 +279,13 @@ function renderTabs(activeId) {
 /* ---------- Pages ---------- */
 function indexPage() {
   const t = todayKey(), { y, m, d } = parseKey(t);
-  return `<h1>${esc(state.title)}</h1>
+  const hasCover = state.cover && state.cover !== 'none' && JournalCovers.list.some(c => c.id === state.cover);
+  return `<div class="index-grid${hasCover ? ' with-cover' : ''}">${hasCover ? '<canvas class="cover-card" id="coverCanvas" width="330" height="440" role="img" aria-label="Journal cover"></canvas>' : ''}<div class="index-body"><h1>${esc(state.title)}</h1>
     <p class="sub">${DOWS[new Date(y, m, d).getDay()]}, ${MONTHS[m]} ${d}, ${y} · <a href="#/day/today">Open today’s page →</a></p>
     <h3>Jump to</h3>
     <ul class="toc">${state.tabs.filter(x => x.kind !== 'index').map(x =>
       `<li><a href="#/tab/${x.id}" style="--tab-color:${esc(x.color)}">${esc(x.name)}<br><small class="hint">${{ year: 'Year overview', month: `${MONTHS[x.month]} ${x.year}`, notes: 'Notes page' }[x.kind]}</small></a></li>`).join('')}</ul>
-    ${state.tabs.length < 2 ? '<p class="hint">Open “Customize” to choose a preset or add tabs.</p>' : ''}`;
+    ${state.tabs.length < 2 ? '<p class="hint">Open “Customize” to choose a preset or add tabs.</p>' : ''}</div></div>`;
 }
 
 function gridRows(y, m, mini) {
@@ -354,9 +395,10 @@ const PDF_FONTS = {
   auto: 'Match journal font', helvetica: 'Sans-serif (Helvetica)', times: 'Serif (Times)', courier: 'Typewriter (Courier)',
   caveat: 'Caveat (handwriting)', patrickhand: 'Patrick Hand', indieflower: 'Indie Flower', specialelite: 'Special Elite (typewriter)',
   lora: 'Lora (serif)', merriweather: 'Merriweather (serif)', playfair: 'Playfair Display', quicksand: 'Quicksand (rounded)',
+  cormorant: 'Cormorant Garamond', greatvibes: 'Great Vibes (script)',
 };
 const NOTE_STYLES = [['blank', 'Blank'], ['lined', 'Lined'], ['dotted', 'Dotted'], ['grid', 'Grid'], ['cornell', 'Cornell notes'], ['checklist', 'Checklist']];
-const pdfOpts = () => ({ ...JournalPDF.DEFAULTS, ...state.pdf });
+const pdfOpts = () => ({ ...JournalPDF.DEFAULTS, ...state.pdf, look: state.look || 'elegant' });
 function pdfSelect(key, label, options) {
   const entries = Array.isArray(options) ? options : Object.entries(options);
   return `<label>${label}<select data-pdf="${key}">${entries.map(([v, n]) => `<option value="${v}"${pdfOpts()[key] === v ? ' selected' : ''}>${n}</option>`).join('')}</select></label>`;
@@ -382,17 +424,24 @@ const PDF_FONT_CSS = {
   helvetica: 'Helvetica, Arial, sans-serif', times: '"Times New Roman", Times, serif', courier: '"Courier New", Courier, monospace',
   caveat: 'Caveat, cursive', patrickhand: '"Patrick Hand", cursive', indieflower: '"Indie Flower", cursive', specialelite: '"Special Elite", monospace',
   lora: 'Lora, serif', merriweather: 'Merriweather, serif', playfair: '"Playfair Display", serif', quicksand: 'Quicksand, sans-serif',
+  cormorant: '"Cormorant Garamond", serif', greatvibes: '"Great Vibes", cursive',
 };
 const webFontOpts = () => Object.entries(FONTS).map(([label, css]) => ({ value: css, label, css }));
 const pdfFontOpts = () => Object.entries(PDF_FONTS).map(([k, label]) => ({ value: k, label, css: PDF_FONT_CSS[k] || state.theme.font }));
 const FONT_PICKERS = {
   setFont:     { title: 'Body font', opts: webFontOpts, get: () => state.theme.font, set: v => { state.theme.font = v; refresh(false); } },
   setHeadFont: { title: 'Heading font', opts: () => [{ value: '', label: 'Same as body', css: state.theme.font }, ...webFontOpts()], get: () => state.theme.headFont || '', set: v => { state.theme.headFont = v; refresh(false); } },
-  pdfFont:     { title: 'PDF body font', opts: pdfFontOpts, get: () => pdfOpts().font, set: v => { state.pdf = { ...pdfOpts(), font: v }; save(); updatePdfEstimate(); } },
+  setTitleFont: { title: 'Title font', opts: () => [{ value: '', label: 'Same as heading', css: state.theme.headFont || state.theme.font }, ...webFontOpts()], get: () => state.theme.titleFont || '', set: v => { state.theme.titleFont = v; refresh(false); } },
+  pdfTitleFont: {
+    title: 'PDF title font',
+    opts: () => [{ value: 'auto', label: 'Match journal title font', css: state.theme.titleFont || state.theme.headFont || state.theme.font }, { value: 'same', label: 'Same as body', css: state.theme.font }, ...pdfFontOpts().filter(o => o.value !== 'auto')],
+    get: () => pdfOpts().titleFont, set: v => { state.pdf = { ...pdfOpts(), titleFont: v }; delete state.pdf.look; save(); updatePdfEstimate(); },
+  },
+  pdfFont:     { title: 'PDF body font', opts: pdfFontOpts, get: () => pdfOpts().font, set: v => { state.pdf = { ...pdfOpts(), font: v }; delete state.pdf.look; save(); updatePdfEstimate(); } },
   pdfHeadFont: {
     title: 'PDF heading font',
     opts: () => [{ value: 'auto', label: 'Match journal heading font', css: state.theme.headFont || state.theme.font }, { value: 'same', label: 'Same as body (bold)', css: state.theme.font }, ...pdfFontOpts().filter(o => o.value !== 'auto')],
-    get: () => pdfOpts().headFont, set: v => { state.pdf = { ...pdfOpts(), headFont: v }; save(); updatePdfEstimate(); },
+    get: () => pdfOpts().headFont, set: v => { state.pdf = { ...pdfOpts(), headFont: v }; delete state.pdf.look; save(); updatePdfEstimate(); },
   },
 };
 function fontPickerInner(id) {
@@ -433,6 +482,22 @@ document.addEventListener('keydown', e => {
   else if (e.key === 'Escape') { e.stopImmediatePropagation(); toggleFontPicker(el, false); }
 });
 
+function drawCoverThumbs() {
+  document.querySelectorAll('canvas[data-cover-canvas]').forEach(cv => JournalCovers.drawToCanvas(cv, cv.dataset.coverCanvas, state.theme));
+}
+/* cover card on the Index page: the art plus a title plate */
+async function drawCoverCard(cv) {
+  JournalCovers.drawToCanvas(cv, state.cover, state.theme);
+  const ctx = cv.getContext('2d'), W = cv.width, H = cv.height;
+  try { await document.fonts.load('32px "Great Vibes"'); } catch (e) { /* font optional */ }
+  const px = W * 0.16, pw = W * 0.68, py = H * 0.4, ph = H * 0.2, ink = '#6b5636', gold = '#b59a6b';
+  ctx.fillStyle = '#f7f1e3'; ctx.fillRect(px, py, pw, ph);
+  ctx.strokeStyle = gold; ctx.lineWidth = 1.2; ctx.strokeRect(px + 5, py + 5, pw - 10, ph - 10); ctx.lineWidth = 0.6; ctx.strokeRect(px + 9, py + 9, pw - 18, ph - 18);
+  ctx.fillStyle = ink; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  let s = 38; do { ctx.font = `${s}px "Great Vibes", cursive`; s -= 2; } while (s > 16 && ctx.measureText(state.title).width > pw - 36);
+  ctx.fillText(state.title, W / 2, py + ph * 0.46);
+  ctx.font = '11px "Cormorant Garamond", serif'; ctx.fillText(String(state.year).split('').join(' '), W / 2, py + ph * 0.8);
+}
 function renderSettings() {
   const s = $('settings');
   s.innerHTML = `
@@ -441,6 +506,7 @@ function renderSettings() {
     <h3>Journal</h3>
     <label>Title<input type="text" id="setTitle" value="${esc(state.title)}"></label>
     <label>Year<input type="number" id="setYear" value="${state.year}" min="1900" max="2200" style="width:90px"></label>
+    <label>Planner look<select id="setLook"><option value="elegant"${(state.look || 'elegant') === 'elegant' ? ' selected' : ''}>Elegant (spiral, gold lines)</option><option value="soft"${state.look === 'soft' ? ' selected' : ''}>Soft (rounded, pastel)</option><option value="classic"${state.look === 'classic' ? ' selected' : ''}>Classic (plain)</option></select></label>
     <label>Week starts on<select id="setWeek"><option value="0"${state.weekStart === 0 ? ' selected' : ''}>Sunday</option><option value="1"${state.weekStart === 1 ? ' selected' : ''}>Monday</option></select></label>
 
     <h3>Calendar presets</h3>
@@ -448,14 +514,25 @@ function renderSettings() {
       `<button class="btn" data-preset="${k}">${p.label}<small>${p.desc}</small></button>`).join('')}</div>
     <p class="hint">Applying a preset uses the year above and replaces your tabs. Your day entries and notes pages are kept.</p>
 
-    <h3>Color themes</h3>
-    <div class="swatches">${Object.entries(THEMES).map(([k, t]) =>
+    <h3>Colored pages</h3>
+    <div class="pg-swatches">${Object.entries(THEMES).filter(([, t]) => t.group === 'page').map(([k, t]) =>
+      `<button class="pg-swatch${state.theme.preset === k ? ' on' : ''}" data-themepreset="${k}" title="${t.label}"><span style="background:${t.paper};box-shadow:inset 0 0 0 3px ${t.accent}55"></span><small>${t.label}</small></button>`).join('')}</div>
+
+    <h3>Cover</h3>
+    <div class="cover-grid">${['none', ...JournalCovers.list.map(c => c.id)].map(id => {
+      const c = JournalCovers.list.find(x => x.id === id);
+      return `<button class="cover-opt${(state.cover || 'none') === id ? ' on' : ''}" data-cover="${id}" title="${c ? c.label : 'No cover'}">${c ? `<canvas width="90" height="120" data-cover-canvas="${id}"></canvas>` : '<span class="cover-none">None</span>'}<small>${c ? c.label : 'No cover'}</small></button>`;
+    }).join('')}</div>
+
+    <h3>More color themes</h3>
+    <div class="swatches">${Object.entries(THEMES).filter(([, t]) => t.group !== 'page').map(([k, t]) =>
       `<button class="swatch${state.theme.preset === k ? ' on' : ''}" data-themepreset="${k}" title="${t.label}"><div class="bars"><i style="background:${t.paper}"></i><i style="background:${t.accent}"></i><i style="background:${t.bar}"></i><i style="background:${t.today}"></i></div><span>${t.label}</span></button>`).join('')}</div>
 
     <h3>Custom colors</h3>
     ${colorInput('paper', 'Page paper')}${colorInput('ink', 'Text')}${colorInput('accent', 'Links & accents')}${colorInput('bar', 'Top bar')}${colorInput('today', 'Today highlight')}
     ${fontPicker('setFont')}
     ${fontPicker('setHeadFont')}
+    ${fontPicker('setTitleFont')}
     <p class="font-sample" style="font-family:var(--font)">The quick brown fox jumps over the lazy dog — 0123456789</p>
 
     <h3>Tabs</h3>
@@ -477,9 +554,11 @@ function renderSettings() {
 
     <h3>Export to PDF</h3>
     <p class="hint">Makes a hyperlinked PDF you can open in GoodNotes, Notability, Notes+ and similar apps. Tabs, calendar days, weeks and [[links]] stay tappable.</p>
-    ${pdfSelect('look', 'Planner look', { soft: 'Soft planner (rounded, side tabs)', classic: 'Classic (top tabs, square)' })}
     ${fontPicker('pdfFont')}
     ${fontPicker('pdfHeadFont')}
+    ${fontPicker('pdfTitleFont')}
+    ${pdfSelect('dailyLayout', 'Daily page layout', { planner: 'Daily planner (priorities, to-do, schedule)', simple: 'Simple journal page' })}
+    <label>Include cover page<input type="checkbox" data-pdf="coverPage"${pdfOpts().coverPage !== false ? ' checked' : ''}></label>
     ${pdfSelect('size', 'Page size', { a4: 'A4', letter: 'US Letter', tablet: 'Tablet (4:3)' })}
     ${pdfSelect('orient', 'Orientation', { portrait: 'Portrait', landscape: 'Landscape' })}
     ${pdfSelect('weekly', 'Weekly pages', { none: 'None', rows: 'Rows (one line per day)', grid: 'Grid (boxes + notes)', planner: 'Planner (days + priorities)' })}
@@ -499,6 +578,7 @@ function renderSettings() {
     <input type="file" id="importFile" accept="application/json" hidden>
     <p class="hint">Everything is saved automatically in this browser.</p>`;
   updatePdfEstimate();
+  drawCoverThumbs();
 }
 
 function refresh(withSettings) { applyTheme(); render(); if (withSettings) renderSettings(); save(); }
@@ -515,9 +595,11 @@ document.addEventListener('change', e => {
   const t = e.target;
   if (t.dataset.pdf) {
     state.pdf = { ...pdfOpts(), [t.dataset.pdf]: t.type === 'checkbox' ? t.checked : t.type === 'number' ? Math.min(30, Math.max(1, +t.value || 1)) : t.value };
+    delete state.pdf.look;
     save(); updatePdfEstimate(); return;
   }
   if (t.id === 'setYear') { state.year = Math.min(2200, Math.max(1900, +t.value || state.year)); save(); }
+  else if (t.id === 'setLook') { state.look = t.value; refresh(true); }
   else if (t.id === 'setWeek') { state.weekStart = +t.value; refresh(false); }
   else if (t.dataset.tabname !== undefined) { refresh(true); }
   else if (t.id === 'importFile' && t.files[0]) {
@@ -539,6 +621,7 @@ document.addEventListener('click', async e => {
   if (!b) return;
   const d = b.dataset;
   if (b.id === 'closeSettings') return openSettings(false);
+  if (d.cover !== undefined) { state.cover = d.cover; refresh(true); return; }
   if (d.preset) {
     if (!await askConfirm(`Apply the “${PRESETS[d.preset].label}” preset? Your tabs will be replaced (entries and notes pages are kept).`, 'Apply preset')) return;
     const keep = state.tabs.filter(t => t.kind === 'notes' && (state.notes[t.id] || '').trim());

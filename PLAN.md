@@ -81,3 +81,10 @@ A zero-dependency web app (static HTML/CSS/JS, open `index.html`) for building y
 
 ## Phase 8 — Font pickers
 - The four font menus (body, heading, PDF body, PDF heading) are custom listboxes: every option is drawn in its own typeface, which native `<select>` can't do on iOS/Safari. Keyboard support (arrows, Enter, Esc) and a check mark on the current choice.
+
+## Phase 9 — Elegant planner look, colored pages and covers
+- Reference: three screenshots of a hyperlinked iPad life planner (spiral binding, folder tabs with icons, month tabs with a day-number strip, gold-outlined boxes with labels on the border, script titles, "colored pages" + covers).
+- New default look "Elegant" (Soft and Classic remain), shared by the app and the PDF (`state.look`).
+- Fonts: Great Vibes (script titles), Cormorant Garamond (+ italic for box labels); new "title font" role in app and PDF.
+- 8 colored pages (Sand, Olive, Sage Mist, Plum, Lilac Mist, Slate, Blue Mist, Cocoa) and 8 procedural covers (Golden Frame, Starry Night, Moonlit Meadow, Wildflower Vines, Crescent Sky, Enchanted Forest, Celestial Arch, Botanical Line) in `covers.js`, drawn identically on canvas and into the PDF.
+- PDF pages: cover; home; calendar (filled mini months); monthly (week tabs, grid, goals + notes boxes); weekly planner (day rows, weekly focus, to-do, notes, W1..W5 selector); daily planner (water/mood/meal trackers, top priority, to-do, notes, 6AM-8PM schedule). Every page has HOME/CALENDAR/MONTH/WEEK/DAY/NOTES tabs, right-edge month tabs and a clickable day-number strip.

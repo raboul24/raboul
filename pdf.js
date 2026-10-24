@@ -12,11 +12,11 @@ const STYLE = {
   grid: { step: 20, size: 11 }, cornell: { step: 22, size: 12 }, checklist: { step: 26, size: 12 },
   schedule: { step: 24, size: 11 },
 };
-const M = 36;           // page margin
+let M = 36;             // left page margin (wider when the spiral binding is drawn)
 const TOP = 52;         // below the tab strip
 const BODY_TOP = 124;   // below title + nav row
 
-const DEFAULTS = { look: 'soft', font: 'auto', headFont: 'auto', size: 'a4', orient: 'portrait', useTheme: true, weekly: 'rows', daily: 'none', dailyStyle: 'lined', notesStyle: 'lined', notesPages: 2 };
+const DEFAULTS = { look: 'elegant', font: 'auto', headFont: 'auto', titleFont: 'auto', size: 'a4', orient: 'portrait', useTheme: true, weekly: 'planner', daily: 'none', dailyLayout: 'planner', dailyStyle: 'dotted', notesStyle: 'lined', notesPages: 2, coverPage: true };
 
 /* ---------- small helpers ---------- */
 const pad = n => String(n).padStart(2, '0');
@@ -59,22 +59,31 @@ const BUILTIN = {
 const EMBEDDED = {
   caveat: 'Caveat', patrickhand: 'PatrickHand', indieflower: 'IndieFlower', specialelite: 'SpecialElite',
   lora: 'Lora', merriweather: 'Merriweather', playfair: 'PlayfairDisplay', quicksand: 'Quicksand',
+  greatvibes: 'GreatVibes', cormorant: 'CormorantGaramond', cormorantitalic: 'CormorantGaramondItalic',
 };
 /* optical size correction so small-x-height faces stay legible at the same nominal size */
-const SCALE = { caveat: 1.22, indieflower: 1.08, patrickhand: 1.05, quicksand: 1.0 };
+const SCALE = { caveat: 1.22, indieflower: 1.08, patrickhand: 1.05, quicksand: 1.0, cormorant: 1.1, cormorantitalic: 1.1 };
 const AUTO_FONT = {
   georgia: 'times', 'times new roman': 'times', 'palatino linotype': 'times', lora: 'lora', merriweather: 'merriweather',
   'playfair display': 'playfair', quicksand: 'quicksand', caveat: 'caveat', 'segoe print': 'caveat', 'patrick hand': 'patrickhand',
-  'indie flower': 'indieflower', 'special elite': 'specialelite', 'ui-monospace': 'courier',
+  'indie flower': 'indieflower', 'special elite': 'specialelite', 'ui-monospace': 'courier', 'great vibes': 'greatvibes', 'cormorant garamond': 'cormorant',
 };
 const autoFont = css => AUTO_FONT[(css || '').split(',')[0].trim().replace(/["']/g, '').toLowerCase()] || 'helvetica';
-const resolveFont = (state, o) => (BUILTIN[o.font] || EMBEDDED[o.font]) ? o.font : autoFont(state.theme.font);
+const isKey = k => BUILTIN[k] || EMBEDDED[k];
+const resolveFont = (state, o) => isKey(o.font) ? o.font : autoFont(state.theme.font);
 /* heading font = the face used for bold text (titles, labels, buttons); null means "bold version of the body font" */
 function resolveHead(state, o) {
   const body = resolveFont(state, o);
-  const h = o.headFont === 'same' ? null : (BUILTIN[o.headFont] || EMBEDDED[o.headFont]) ? o.headFont : state.theme.headFont ? autoFont(state.theme.headFont) : null;
+  const h = o.headFont === 'same' ? null : isKey(o.headFont) ? o.headFont : state.theme.headFont ? autoFont(state.theme.headFont) : null;
   return h && h !== body ? h : null;
 }
+/* title font = big page titles (a script face in the elegant look); legend font = small italic box labels */
+function resolveTitle(state, o) {
+  const t = o.titleFont === 'same' ? null : isKey(o.titleFont) ? o.titleFont : state.theme.titleFont ? autoFont(state.theme.titleFont) : o.look === 'elegant' ? 'greatvibes' : null;
+  return t && t !== resolveFont(state, o) ? t : null;
+}
+const resolveLegend = (state, o) => o.look === 'elegant' && resolveFont(state, o) === 'cormorant' ? 'cormorantitalic' : null;
+const fontKeys = (state, o) => [...new Set([resolveFont(state, o), resolveHead(state, o), resolveTitle(state, o), resolveLegend(state, o)].filter(Boolean))];
 
 const REV = Object.fromEntries(Object.entries(CP).map(([u, b]) => [b, +u]));
 const loaded = {};                       // key -> parsed TrueType font
@@ -138,8 +147,8 @@ function loadFont(key) {
   }));
   return loading.get(key);
 }
-let curBody = 'helvetica', curHead = null;
-const faceFor = bold => (bold && curHead) || curBody;     // font key used for a piece of text
+let curBody = 'helvetica', curHead = null, curTitle = null, curLegend = null;
+const faceFor = (bold, role) => role === 'title' && curTitle ? curTitle : role === 'legend' && curLegend ? curLegend : (bold && curHead) || curBody;     // font key used for a piece of text
 const emb = key => loaded[key] || null;
 /* glyph ids for a string; unsupported characters fall back to '?' */
 function gidsOf(F, s) {
@@ -154,8 +163,8 @@ function gidsOf(F, s) {
 }
 
 let measureCtx; const mcache = new Map();
-function tw(s, size, bold) {
-  const key = faceFor(bold), F = emb(key), fake = bold && !curHead;
+function tw(s, size, bold, role) {
+  const key = faceFor(bold, role), F = emb(key), fake = bold && !curHead && !role;
   if (F) {
     let sum = 0; for (const g of gidsOf(F, s)) sum += F.adv(g);
     return sum / F.upm * size * (SCALE[key] || 1) * (fake ? 1.04 : 1);
@@ -170,6 +179,8 @@ function tw(s, size, bold) {
   }
   return w * size;
 }
+/* width of text drawn with character spacing cs */
+const twc = (s, size, bold, role, cs) => tw(s, size, bold, role) + (cs || 0) * [...s].length;
 function fit(s, size, maxW, bold) {
   if (tw(s, size, bold) <= maxW) return s;
   while (s.length > 1 && tw(s + '.', size, bold) > maxW) s = s.slice(0, -1);
@@ -224,7 +235,7 @@ class Pg {
   rect(x, y, w, h, fill, stroke, lw) {
     const r = this.soft && w >= 14 && h >= 14 && w < this.W - 1 ? Math.min(7, h / 4, w / 4) : 0;
     if (r) {                                                       // soft look: rounded corners + a faint drop shadow on filled cards
-      if (fill && w > 40 && h > 24) this.rrect(x + 1, y + 2, w, h, r, this.shadow, null);
+      if (fill && w > 40 && h > 24 && this.shadow) this.rrect(x + 1, y + 2, w, h, r, this.shadow, null);
       this.rrect(x, y, w, h, r, fill, stroke, lw); return;
     }
     let o = '';
@@ -238,6 +249,21 @@ class Pg {
     if (fill) o += rg(fill) + ' rg ';
     if (stroke) o += rg(stroke) + ' RG ' + (lw || 0.6) + ' w ';
     this.ops.push(`${o}${n(x0 + r)} ${n(y0)} m ${n(x1 - r)} ${n(y0)} l ${n(x1 - r + k)} ${n(y0)} ${n(x1)} ${n(y0 + r - k)} ${n(x1)} ${n(y0 + r)} c ${n(x1)} ${n(y1 - r)} l ${n(x1)} ${n(y1 - r + k)} ${n(x1 - r + k)} ${n(y1)} ${n(x1 - r)} ${n(y1)} c ${n(x0 + r)} ${n(y1)} l ${n(x0 + r - k)} ${n(y1)} ${n(x0)} ${n(y1 - r + k)} ${n(x0)} ${n(y1 - r)} c ${n(x0)} ${n(y0 + r)} l ${n(x0)} ${n(y0 + r - k)} ${n(x0 + r - k)} ${n(y0)} ${n(x0 + r)} ${n(y0)} c h ${fill && stroke ? 'B' : fill ? 'f' : 'S'}`);
+  }
+  fillRect(x, y, w, h, fill) { this.ops.push(`${rg(fill)} rg ${f(x)} ${f(this.H - y - h)} ${f(w)} ${f(h)} re f`); }
+  strokeRect(x, y, w, h, stroke, lw) { this.ops.push(`${rg(stroke)} RG ${lw || 0.5} w ${f(x)} ${f(this.H - y - h)} ${f(w)} ${f(h)} re S`); }
+  poly(pts, fill) {
+    this.ops.push(`${rg(fill)} rg ` + pts.map(([x, y], i) => `${f(x)} ${f(this.H - y)} ${i ? 'l' : 'm'}`).join(' ') + ' h f');
+  }
+  polyline(pts, stroke, lw, closed) {
+    this.ops.push(`${rg(stroke)} RG ${lw || 0.5} w 1 j 1 J ` + pts.map(([x, y], i) => `${f(x)} ${f(this.H - y)} ${i ? 'l' : 'm'}`).join(' ') + (closed ? ' s' : ' S'));
+  }
+  circleStroke(cx, cy, r, stroke, lw) {
+    const n = 20, pts = Array.from({ length: n }, (_, i) => [cx + r * Math.cos(i * 2 * Math.PI / n), cy + r * Math.sin(i * 2 * Math.PI / n)]);
+    this.polyline(pts, stroke, lw, true);
+  }
+  dashed(x1, y, x2, c, lw, on, off) {
+    this.ops.push(`q ${rg(c)} RG ${lw || 0.5} w 1 J [${on} ${off}] 0 d ${f(x1)} ${f(this.H - y)} m ${f(x2)} ${f(this.H - y)} l S Q`);
   }
   circle(cx, cy, r, fill) {
     const k = 0.5523 * r, X = cx, Y = this.H - cy;
@@ -259,10 +285,10 @@ class Pg {
     for (let yy = y; yy <= y + h + 0.1; yy += step) this.ops.push(`${f(x)} ${f(this.H - yy)} m ${f(x + w)} ${f(this.H - yy)} l S`);
     this.ops.push('Q');
   }
-  text(x, y, s, size, color, bold, rot) {
-    const key = faceFor(bold), F = emb(key), tm = `${rot ? '0 -1 1 0' : '1 0 0 1'} ${f(x)} ${f(this.H - y)} Tm`;
+  text(x, y, s, size, color, bold, rot, role, cs) {
+    const key = faceFor(bold, role), F = emb(key), tm = `${cs ? f(cs) + ' Tc ' : ''}${rot ? '0 -1 1 0' : '1 0 0 1'} ${f(x)} ${f(this.H - y)} Tm`;
     if (F) {                                   // embedded CID font: hex glyph ids; faux bold (stroke) only when there is no heading font
-      const hexs = gidsOf(F, s).map(g => g.toString(16).padStart(4, '0')).join(''), fake = bold && !curHead;
+      const hexs = gidsOf(F, s).map(g => g.toString(16).padStart(4, '0')).join(''), fake = bold && !curHead && !role;
       this.ops.push(`q ${fake ? `${rg(color)} RG ${f(size * 0.03)} w 2 Tr ` : ''}BT /${fontRes(key, false)} ${f(size * (SCALE[key] || 1))} Tf ${rg(color)} rg ${tm} <${hexs}> Tj ET Q`);
     } else this.ops.push(`BT /${fontRes(BUILTIN[key] ? key : 'helvetica', bold)} ${size} Tf ${rg(color)} rg ${tm} ${pdfStr(s)} Tj ET`);
   }
@@ -272,8 +298,8 @@ class Pg {
 /* ---------- the document session: plan pages, then draw them ---------- */
 function session(state, optsIn) {
   const o = { ...DEFAULTS, ...optsIn };
-  const fontKey = resolveFont(state, o), headKey = resolveHead(state, o);
-  curBody = fontKey; curHead = headKey;
+  const fontKey = resolveFont(state, o), headKey = resolveHead(state, o), titleKey = resolveTitle(state, o), legendKey = resolveLegend(state, o);
+  curBody = fontKey; curHead = headKey; curTitle = titleKey; curLegend = legendKey;
   const [bw, bh] = SIZES[o.size] || SIZES.a4;
   const W = o.orient === 'landscape' ? bh : bw, H = o.orient === 'landscape' ? bw : bh;
   const th = state.theme;
@@ -283,9 +309,16 @@ function session(state, optsIn) {
   C.muted = mix(C.ink, C.paper, 0.45); C.line = mix(C.paper, C.ink, 0.2); C.faint = mix(C.paper, C.ink, 0.1);
   C.dot = mix(C.paper, C.ink, 0.38);
   const today = todayKey();
-  const SOFT = o.look !== 'classic', TABCOL = SOFT ? 14 : 0, R = W - M - TABCOL, CW = R - M;
+  const ELEG = o.look === 'elegant', SOFT = o.look === 'soft', ROUNDED = ELEG || SOFT;
+  M = ELEG ? 58 : 36;
+  const TABCOL = ELEG ? 30 : SOFT ? 14 : 0, R = W - 36 - TABCOL, CW = R - M;
   C.card = lum(C.paper) > 0.5 ? mix(C.paper, '#ffffff', 0.7) : mix(C.paper, '#ffffff', 0.06);
   C.tint = mix(C.accent, C.paper, 0.84); C.mat = mix(C.accent, C.paper, 0.9); C.shadow = mix(C.paper, C.ink, 0.13);
+  C.gold = C.accent; C.goldSoft = mix(C.accent, C.paper, 0.5);
+  C.cell = lum(C.paper) > 0.5 ? mix(C.accent, C.paper, 0.78) : mix(C.paper, '#ffffff', 0.1);
+  C.legend = lum(C.paper) > 0.5 ? mix(C.accent, C.ink, 0.5) : mix(C.accent, '#ffffff', 0.25);
+  C.titleC = lum(C.paper) > 0.5 ? mix(C.accent, C.ink, 0.3) : C.accent;
+  C.coil = mix(C.accent, C.ink, 0.2); C.hole = mix(C.paper, C.ink, 0.55); C.bind = mix(C.paper, C.ink, 0.06);
   let tabColor = C.accent;
   const weekStartOf = k => addDays(k, -((dowOf(k) - state.weekStart + 7) % 7));
 
@@ -311,7 +344,7 @@ function session(state, optsIn) {
       for (let xx = x; xx <= x + w + 0.1; xx += L.step) pg.line(xx, y, xx, y + Math.floor(h / L.step) * L.step, C.line, 0.4);
       for (let yy = y; yy <= y + h + 0.1; yy += L.step) pg.line(x, yy, x + w, yy, C.line, 0.4);
     } else if (style === 'checklist') {
-      for (let i = 1; i <= rows; i++) { const yy = L.ty0 + i * L.step; pg.line(x + 20, yy, x + w, yy, C.line, 0.6); pg.rrect(x, yy - 13, 11, 11, SOFT ? 3 : 0, null, C.muted, 0.7); }
+      for (let i = 1; i <= rows; i++) { const yy = L.ty0 + i * L.step; pg.line(x + 20, yy, x + w, yy, C.line, 0.6); pg.rrect(x, yy - 13, 11, 11, ROUNDED ? 3 : 0, null, C.muted, 0.7); }
     } else if (style === 'schedule') {
       const hrs = 16, rh = Math.min(30, h / hrs), half = Math.round(w * 0.5) - 8;
       for (let i = 0; i < hrs; i++) {
@@ -320,7 +353,7 @@ function session(state, optsIn) {
         pg.text(x, yy - 4, `${hr % 12 || 12} ${hr < 12 ? 'AM' : 'PM'}`, 8, C.muted);
       }
       pg.text(x + half + 20, y + 10, 'To-do', 9, C.muted, true);
-      for (let yy = y + 36, n = 0; yy < y + h && n < 20; yy += 26, n++) { pg.line(x + half + 38, yy, x + w, yy, C.line, 0.6); pg.rrect(x + half + 20, yy - 12, 11, 11, SOFT ? 3 : 0, null, C.muted, 0.7); }
+      for (let yy = y + 36, n = 0; yy < y + h && n < 20; yy += 26, n++) { pg.line(x + half + 38, yy, x + w, yy, C.line, 0.6); pg.rrect(x + half + 20, yy - 12, 11, 11, ROUNDED ? 3 : 0, null, C.muted, 0.7); }
     }
   }
 
@@ -329,7 +362,10 @@ function session(state, optsIn) {
   const add = (spec, keys) => { spec.i = specs.length; specs.push(spec); (keys || []).forEach(k => { if (!first.has(k)) first.set(k, spec.i); }); };
   const wantDay = k => o.daily === 'all' || (o.daily === 'entries' && state.days[k]);
   const doneWeeks = new Set();
-  const notesBox = { x: M, y: BODY_TOP - 14, w: CW, h: H - 36 - (BODY_TOP - 14) };
+  const notesBox = ELEG ? { x: M + 12, y: BODY_TOP + 2, w: CW - 24, h: H - 36 - BODY_TOP - 24 } : { x: M, y: BODY_TOP - 14, w: CW, h: H - 36 - (BODY_TOP - 14) };
+  const monthWeeks = new Map();
+  const cover = o.coverPage !== false && state.cover && window.JournalCovers && JournalCovers.list.find(c => c.id === state.cover);
+  if (cover) add({ type: 'cover', cover }, ['cover']);
 
   for (const tab of state.tabs) {
     const tk = 'tab:' + tab.id;
@@ -338,7 +374,7 @@ function session(state, optsIn) {
       add({ type: 'month', tab }, [tk]);
       for (let d = 1; d <= daysIn(tab.year, tab.month); d++) {
         const k = dateKey(tab.year, tab.month, d), ws = weekStartOf(k);
-        if (o.weekly !== 'none' && !doneWeeks.has(ws)) { doneWeeks.add(ws); add({ type: 'week', tab, ws }, ['week:' + ws]); }
+        if (o.weekly !== 'none' && !doneWeeks.has(ws)) { doneWeeks.add(ws); add({ type: 'week', tab, ws }, ['week:' + ws]); if (!monthWeeks.has(tab.id)) monthWeeks.set(tab.id, []); monthWeeks.get(tab.id).push(ws); }
         if (wantDay(k)) add({ type: 'day', tab, date: k }, ['day:' + k]);
       }
     } else {
@@ -370,7 +406,8 @@ function session(state, optsIn) {
       }
     });
   }
-  function chrome(pg, activeTab) {
+  function chrome(pg, activeTab, spec) {
+    if (ELEG) return chromeElegant(pg, activeTab, spec);
     tabColor = activeTab ? activeTab.color : C.accent;
     if (!SOFT) {
       pg.rect(0, 0, W, H, C.paper);
@@ -401,6 +438,7 @@ function session(state, optsIn) {
     });
   }
   function title(pg, text, sub) {
+    if (ELEG) return titleElegant(pg, text, sub);
     if (!SOFT) {
       pg.text(M, 72, fit(text, 22, CW, true), 22, C.ink, true);
       if (sub) pg.text(M, 87, sub, 10, C.muted);
@@ -412,8 +450,8 @@ function session(state, optsIn) {
     pg.tape(M + CW - 52, 49, 92, 19, 7, mix(tabColor, C.paper, 0.45), mix(tabColor, C.paper, 0.25));
   }
   function navBar(pg, left, right) {
-    const y = 94, h = 18, wid = it => tw(it.label, 9, true) + 16;
-    const place = (it, x) => { pg.rect(x, y, wid(it), h, SOFT ? C.tint : C.faint, SOFT ? null : C.line, 0.6); pg.text(x + 8, y + 12.5, it.label, 9, SOFT ? mix(C.accent, C.ink, 0.5) : C.accent, true); pg.link(x, y, wid(it), h, it.key); };
+    const y = 94, h = 18, wid = it => (ELEG ? tw(it.label, 8.5, false, 'legend') : tw(it.label, 9, true)) + 16;
+    const place = (it, x) => { if (ELEG) { pg.rrect(x, y, wid(it), h, 9, null, C.gold, 0.7); pg.text(x + 8, y + 12.5, it.label, 8.5, C.legend, false, false, 'legend'); pg.link(x, y, wid(it), h, it.key); return; } pg.rect(x, y, wid(it), h, SOFT ? C.tint : C.faint, SOFT ? null : C.line, 0.6); pg.text(x + 8, y + 12.5, it.label, 9, SOFT ? mix(C.accent, C.ink, 0.5) : C.accent, true); pg.link(x, y, wid(it), h, it.key); };
     let x = M;
     for (const it of left.filter(i => i.key)) { place(it, x); x += wid(it) + 6; }
     const r = right.filter(i => i.key);
@@ -424,7 +462,8 @@ function session(state, optsIn) {
 
   /* ----- page types ----- */
   function indexPage(pg, spec) {
-    chrome(pg, spec.tab);
+    if (ELEG) return indexElegant(pg, spec);
+    chrome(pg, spec.tab, spec);
     title(pg, state.title, 'Tap a tab at the top, or any link below, to jump around.');
     const items = [];
     if (dayTarget(today)) items.push({ name: 'Today', sub: shortDate(today), color: C.accent, key: dayTarget(today) });
@@ -443,7 +482,8 @@ function session(state, optsIn) {
   }
 
   function yearPage(pg, spec) {
-    const tab = spec.tab; chrome(pg, tab);
+    if (ELEG) return yearElegant(pg, spec);
+    const tab = spec.tab; chrome(pg, tab, spec);
     const label = tab.month === 0 ? tab.year : `${tab.year}-${tab.year + 1}`;
     title(pg, `${tab.name} ${label}`, 'Tap a month name or any day to jump to its page.');
     const cols = W > H ? 4 : 3, rows = 12 / cols, gap = 14;
@@ -472,7 +512,8 @@ function session(state, optsIn) {
   }
 
   function monthPage(pg, spec) {
-    const tab = spec.tab; chrome(pg, tab);
+    if (ELEG) return monthElegant(pg, spec);
+    const tab = spec.tab; chrome(pg, tab, spec);
     title(pg, `${MONTHS[tab.month]} ${tab.year}`);
     const i = monthTabs.indexOf(tab), yt = state.tabs.find(t => t.kind === 'year');
     navBar(pg,
@@ -503,6 +544,7 @@ function session(state, optsIn) {
 
   /* one day's box in a week page: label + ruled writing lines + prefilled entry */
   function dayBox(pg, k, x, y, w, h, side) {
+    if (ELEG) return dayBoxElegant(pg, k, x, y, w, h, side);
     const labelW = side ? 64 : 0, ly = side ? y : y + 20, lh = side ? h : h - 20;
     pg.rect(x, y, w, h, SOFT ? C.card : null, C.line, 0.7);
     if (side) pg.rect(x, y, labelW, h, k === today ? C.today : SOFT ? C.tint : C.faint, C.line, 0.7);
@@ -521,8 +563,9 @@ function session(state, optsIn) {
   }
 
   function weekPage(pg, spec) {
+    if (ELEG && o.weekly === 'planner') return weekElegant(pg, spec);
     const tab = spec.tab, ws = spec.ws, days = Array.from({ length: 7 }, (_, i) => addDays(ws, i));
-    chrome(pg, tab);
+    chrome(pg, tab, spec);
     const a = parseKey(ws), b = parseKey(days[6]);
     title(pg, `Week of ${shortDate(ws)}`, `${shortDate(ws)}${a.y !== b.y ? ', ' + a.y : ''} - ${shortDate(days[6])}, ${b.y}`);
     navBar(pg,
@@ -549,8 +592,9 @@ function session(state, optsIn) {
   }
 
   function dayPage(pg, spec) {
+    if (o.dailyLayout === 'planner') return plannerDay(pg, spec);
     const k = spec.date, tab = spec.tab, { y: yy, m, d } = parseKey(k), ws = weekStartOf(k);
-    chrome(pg, tab);
+    chrome(pg, tab, spec);
     title(pg, `${DOW_FULL[dowOf(k)]}, ${MONTHS[m]} ${d}, ${yy}`);
     navBar(pg,
       [{ label: '< ' + shortDate(addDays(k, -1)), key: dayTarget(addDays(k, -1)) }, { label: shortDate(addDays(k, 1)) + ' >', key: dayTarget(addDays(k, 1)) }],
@@ -568,20 +612,296 @@ function session(state, optsIn) {
   }
 
   function notesPage(pg, spec) {
-    const tab = spec.tab; chrome(pg, tab);
+    const tab = spec.tab; chrome(pg, tab, spec);
     title(pg, tab.name + (spec.part ? ' (cont.)' : ''), spec.count > 1 ? `Page ${spec.part + 1} of ${spec.count}` : '');
+    if (ELEG) pg.rrect(M, BODY_TOP - 6, CW, H - 36 - BODY_TOP + 6, 12, null, C.gold, 0.7);
     const b = notesBox;
     drawStyleBg(pg, o.notesStyle, b.x, b.y, b.w, b.h);
     const L = styleLayout(o.notesStyle, b.x, b.y, b.w, b.h);
     drawRich(pg, spec.lines, L.tx + 2, L.ty0 + L.step - 5, L.step, L.size, 9999);
   }
 
+  /* ================= shared planner pieces ================= */
+  const ell = (cx, cy, rx, ry, n = 22) => Array.from({ length: n }, (_, i) => [cx + rx * Math.cos(i * 2 * Math.PI / n), cy + ry * Math.sin(i * 2 * Math.PI / n)]);
+  const textC = (pg, cx, y, s, size, color, bold, role, cs) => pg.text(cx - twc(s, size, bold, role, cs) / 2, y, s, size, color, bold, false, role, cs);
+  const onGold = () => lum(C.gold) > 0.62 ? '#2b2b2b' : '#ffffff';
+
+  /* a box whose label sits on the top border (elegant), as a pill (soft) or inside the corner (classic) */
+  function box(pg, x, y, w, h, label) {
+    if (ELEG) {
+      pg.rrect(x, y, w, h, 10, null, C.gold, 0.7);
+      if (label) { const lw = tw(label, 9, false, 'legend') + 16; pg.fillRect(x + (w - lw) / 2, y - 5.5, lw, 11, C.paper); textC(pg, x + w / 2, y + 3, label, 9, C.legend, false, 'legend'); }
+    } else if (SOFT) {
+      pg.rect(x, y, w, h, C.card, C.line, 0.6);
+      if (label) { const lw = tw(label, 8.5, true) + 16; pg.rect(x + 12, y - 8, lw, 16, C.tint, null); pg.text(x + 20, y + 3, label, 8.5, mix(C.accent, C.ink, 0.5), true); }
+    } else {
+      pg.rect(x, y, w, h, null, C.line, 0.7);
+      if (label) pg.text(x + 8, y + 12, label, 8.5, C.ink, true);
+    }
+  }
+  const boxPad = ELEG || SOFT ? 8 : 18;
+  /* dotted writing rows, optionally with a circle checkbox at the right end */
+  function checkRows(pg, x, y, w, rows, step, circles) {
+    for (let i = 1; i <= rows; i++) {
+      const yy = y + i * step;
+      pg.dashed(x + 10, yy, x + w - (circles ? 28 : 10), ELEG ? C.goldSoft : C.line, 0.6, 1, 2.4);
+      if (circles) pg.circleStroke(x + w - 15, yy - 5, 4.3, ELEG ? C.gold : C.muted, 0.7);
+    }
+  }
+  function drop(pg, cx, cy, c) {
+    const pts = [[cx, cy - 8]];
+    for (let i = 0; i <= 14; i++) { const a = -0.3 * Math.PI + i * 1.6 * Math.PI / 14; pts.push([cx + 4.6 * Math.cos(a), cy + 2.6 + 4.6 * Math.sin(a)]); }
+    pg.polyline(pts, c, 0.8, true);
+  }
+  function icon(pg, kind, x, y, c) {                      // 10 x 10 line icons
+    const L = (pts, closed) => pg.polyline(pts.map(([a, b]) => [x + a, y + b]), c, 0.8, closed);
+    if (kind === 'home') { L([[0, 5], [5, 0.5], [10, 5]]); L([[1.5, 4.5], [1.5, 9.5], [8.5, 9.5], [8.5, 4.5]]); }
+    else if (kind === 'cal') { L([[0.5, 1.5], [9.5, 1.5], [9.5, 9.5], [0.5, 9.5]], true); L([[0.5, 4], [9.5, 4]]); L([[3, 0], [3, 2.5]]); L([[7, 0], [7, 2.5]]); }
+    else if (kind === 'month') { for (const a of [0, 3.6, 7.2]) for (const b of [0, 3.6, 7.2]) L([[a, b], [a + 2.6, b], [a + 2.6, b + 2.6], [a, b + 2.6]], true); }
+    else if (kind === 'week') { L([[0, 2], [10, 2]]); L([[0, 5], [10, 5]]); L([[0, 8], [10, 8]]); }
+    else if (kind === 'day') { pg.polyline(ell(x + 5, y + 5, 2.6, 2.6, 12), c, 0.8, true); for (let i = 0; i < 8; i++) { const a = i * Math.PI / 4; L([[5 + 3.8 * Math.cos(a), 5 + 3.8 * Math.sin(a)], [5 + 5 * Math.cos(a), 5 + 5 * Math.sin(a)]]); } }
+    else L([[1, 9], [2, 6.5], [8, 0.8], [9.3, 2.1], [3.5, 8]], true);
+  }
+
+  /* ================= elegant chrome ================= */
+  function spiral(pg) {
+    pg.fillRect(0, 0, 38, H, C.bind);
+    pg.line(38, 0, 38, H, C.goldSoft, 0.4);
+    for (let y = 20; y < H - 12; y += 16) {
+      pg.poly(ell(30, y, 3, 1.9), C.hole);
+      pg.polyline(ell(15, y, 17, 3.8), C.coil, 2.2, true);
+      pg.polyline(ell(15, y - 1, 15, 2.4), mix(C.coil, '#ffffff', 0.6), 0.6, true);
+    }
+  }
+  let secs;
+  function sections() {
+    if (secs) return secs;
+    const idx = state.tabs.find(t => t.kind === 'index'), yr = state.tabs.find(t => t.kind === 'year'), nt = state.tabs.find(t => t.kind === 'notes');
+    const td = parseKey(today), mt = monthTabs.find(t => t.year === td.y && t.month === td.m) || monthTabs[0];
+    const anyKey = prefix => [...first.keys()].find(k => k.startsWith(prefix));
+    secs = [
+      { id: 'index', label: 'HOME', icon: 'home', key: idx && 'tab:' + idx.id },
+      { id: 'year', label: 'CALENDAR', icon: 'cal', key: yr && 'tab:' + yr.id },
+      { id: 'month', label: 'MONTH', icon: 'month', key: mt && 'tab:' + mt.id },
+      { id: 'week', label: 'WEEK', icon: 'week', key: first.has('week:' + weekStartOf(today)) ? 'week:' + weekStartOf(today) : anyKey('week:') },
+      { id: 'day', label: 'DAY', icon: 'day', key: dayTarget(today) || anyKey('day:') || anyKey('week:') },
+      { id: 'notes', label: 'NOTES', icon: 'notes', key: nt && 'tab:' + nt.id },
+    ].filter(s => s.key && first.has(s.key));
+    return secs;
+  }
+  function chromeElegant(pg, activeTab, spec) {
+    tabColor = activeTab ? activeTab.color : C.accent;
+    pg.rect(0, 0, W, H, C.paper);
+    spiral(pg);
+    const ss = sections(), n = ss.length, gap = 5, tw0 = Math.min(92, (CW - (n - 1) * gap) / Math.max(n, 1)), type = spec && spec.type;
+    ss.forEach((s, i) => {
+      const x = M + i * (tw0 + gap), act = s.id === type, col = act ? onGold() : C.legend;
+      pg.rrect(x, 7, tw0, 28, 8, act ? C.gold : C.cell, act ? null : C.goldSoft, 0.6);
+      icon(pg, s.icon, x + 8, 16, col);
+      pg.text(x + 22, 24.5, fit(s.label, 6.2, tw0 - 28), 6.2, col, false, false, null, 0.9);
+      pg.link(x, 7, tw0, 28, s.key);
+    });
+    const nT = state.tabs.length, top = 46, area = H - top - 24, g2 = 4, th = Math.min(86, (area - (nT - 1) * g2) / Math.max(nT, 1)), fs = th < 40 ? 6.5 : th < 56 ? 7.5 : 8.5;
+    state.tabs.forEach((t, i) => {
+      const act = activeTab && t.id === activeTab.id, y = top + i * (th + g2), x = act ? W - 36 : W - 30, w = act ? 44 : 38;
+      pg.rrect(x, y, w, th, 8, act ? C.gold : C.cell, act ? null : C.goldSoft, 0.6);
+      pg.rrect(x + 3, y + 6, 2.6, th - 12, 1.3, t.color, null);
+      const label = fit(t.name, fs, th - 10, false), lw = tw(label, fs, false, 'legend');
+      pg.text(x + 15, y + (th - lw) / 2, label, fs, act ? onGold() : C.legend, false, true, 'legend');
+      pg.link(x, y, W - x, th, 'tab:' + t.id);
+    });
+    if (spec && ['month', 'week', 'day'].includes(spec.type) && spec.tab && spec.tab.kind === 'month') {
+      const tab = spec.tab, nd = daysIn(tab.year, tab.month), y0 = 60, y1 = H - 40, st = (y1 - y0) / nd, cx = W - 49, cur = spec.type === 'day' ? parseKey(spec.date).d : 0;
+      for (let d = 1; d <= nd; d++) {
+        const k = dateKey(tab.year, tab.month, d), yy = y0 + (d - 0.5) * st, s = String(d);
+        if (d === cur) pg.circle(cx, yy - 0.5, 5.8, C.gold); else if (k === today) pg.circleStroke(cx, yy - 0.5, 5.4, C.gold, 0.6);
+        pg.text(cx - tw(s, 6.2, false, 'legend') / 2, yy + 2, s, 6.2, d === cur ? onGold() : C.legend, false, false, 'legend');
+        pg.link(cx - 9, yy - st / 2, 18, st, dayTarget(k));
+      }
+    }
+  }
+  function titleElegant(pg, text, sub) {
+    let s = text.length > 18 ? 26 : 32;
+    while (s > 16 && tw(text, s, false, 'title') > CW - 10) s -= 2;
+    textC(pg, M + CW / 2, 70, text, s, C.titleC, false, 'title');
+    if (sub) textC(pg, M + CW / 2, 86, sub.toUpperCase(), 6.8, C.muted, false, null, 1.6);
+  }
+
+  /* ================= cover ================= */
+  function coverPage(pg, spec) {
+    const d = { rect: (x, y, w, h, f) => pg.fillRect(x, y, w, h, f), poly: (pts, f) => pg.poly(pts, f), polyline: (pts, s, lw, c) => pg.polyline(pts, s, lw, c) };
+    spec.cover.draw(d, W, H, { paper: C.paper, accent: C.accent });
+    const px = W * 0.16, pw = W * 0.68, py = H * 0.4, ph = H * 0.2, plate = '#f7f1e3', gold = '#b59a6b', ink = '#6b5636';
+    pg.fillRect(px, py, pw, ph, plate); pg.strokeRect(px + 5, py + 5, pw - 10, ph - 10, gold, 1.2); pg.strokeRect(px + 9, py + 9, pw - 18, ph - 18, gold, 0.5);
+    let s = 36; while (s > 16 && tw(state.title, s, false, 'title') > pw - 40) s -= 2;
+    textC(pg, W / 2, py + ph / 2 + s * 0.15, state.title, s, ink, false, 'title');
+    const years = monthTabs.length ? `${monthTabs[0].year}${monthTabs[monthTabs.length - 1].year !== monthTabs[0].year ? ' - ' + monthTabs[monthTabs.length - 1].year : ''}` : String(state.year);
+    textC(pg, W / 2, py + ph - 20, years, 9, ink, false, null, 3);
+    pg.link(0, 0, W, H, first.has('tab:' + (state.tabs[0] || {}).id) ? 'tab:' + state.tabs[0].id : null);
+  }
+
+  /* ================= index ================= */
+  function indexElegant(pg, spec) {
+    chromeElegant(pg, spec.tab, spec);
+    titleElegant(pg, state.title, 'Hyperlinked planner');
+    const items = [];
+    if (dayTarget(today)) items.push({ name: 'Today', sub: shortDate(today), color: C.gold, key: dayTarget(today) });
+    state.tabs.filter(t => t.kind !== 'index' && first.has('tab:' + t.id)).forEach(t =>
+      items.push({ name: t.name, sub: { year: 'Year overview', month: `${MONTHS[t.month]} ${t.year}`, notes: 'Notes' }[t.kind], color: t.color, key: 'tab:' + t.id }));
+    const cols = 2, gap = 22, cw = (CW - gap) / cols, rh = 40;
+    items.forEach((it, i) => {
+      const x = M + (i % cols) * (cw + gap), y = BODY_TOP + 8 + Math.floor(i / cols) * rh;
+      if (y + rh > H - 34) return;
+      pg.circle(x + 6, y + 12, 3.4, it.color);
+      pg.text(x + 18, y + 15, fit(it.name.toUpperCase(), 9.5, cw - 24), 9.5, C.ink, false, false, null, 1.2);
+      pg.text(x + 18, y + 28, fit(it.sub || '', 8.5, cw - 24), 8.5, C.muted, false, false, 'legend');
+      pg.dashed(x, y + 35, x + cw, C.goldSoft, 0.6, 1, 2.4);
+      pg.link(x, y, cw, rh, it.key);
+    });
+  }
+
+  /* ================= year / calendar ================= */
+  function yearElegant(pg, spec) {
+    const tab = spec.tab; chromeElegant(pg, tab, spec);
+    const label = tab.month === 0 ? tab.year : `${tab.year} - ${tab.year + 1}`;
+    titleElegant(pg, 'Calendar', String(label));
+    const cols = W > H ? 4 : 3, rows = 12 / cols, gap = 14, cw = (CW - (cols - 1) * gap) / cols, ch = (H - 36 - BODY_TOP - (rows - 1) * gap) / rows;
+    for (let i = 0; i < 12; i++) {
+      const month = (tab.month + i) % 12, year = tab.year + Math.floor((tab.month + i) / 12);
+      const x = M + (i % cols) * (cw + gap), y = BODY_TOP + Math.floor(i / cols) * (ch + gap);
+      const mt = monthTabs.find(t => t.month === month && t.year === year);
+      textC(pg, x + cw / 2, y + 17, MONTHS[month], 18, C.titleC, false, 'title');
+      if (mt) pg.link(x, y, cw, 24, 'tab:' + mt.id);
+      const cell = cw / 7, hy = y + 36, off = (new Date(year, month, 1).getDay() - state.weekStart + 7) % 7, rh = Math.min(16, (ch - 48) / 6);
+      for (let c = 0; c < 7; c++) textC(pg, x + c * cell + cell / 2, hy, DOWS[(c + state.weekStart) % 7][0], 5.8, C.muted, false, null, 0.4);
+      for (let d = 1; d <= daysIn(year, month); d++) {
+        const k = dateKey(year, month, d), idx = off + d - 1, cx = x + (idx % 7) * cell, cy = hy + 5 + Math.floor(idx / 7) * rh;
+        pg.fillRect(cx + 0.8, cy, cell - 1.6, rh - 1.6, k === today ? C.today : C.cell);
+        const s = String(d); pg.text(cx + (cell - tw(s, 6.2, false, 'legend')) / 2, cy + rh - 5.2, s, 6.2, C.ink, false, false, 'legend');
+        if (state.days[k]) pg.circle(cx + cell - 4, cy + 3, 1.1, C.gold);
+        pg.link(cx, cy, cell, rh, dayTarget(k));
+      }
+    }
+  }
+
+  /* ================= month ================= */
+  function monthElegant(pg, spec) {
+    const tab = spec.tab; chromeElegant(pg, tab, spec);
+    titleElegant(pg, MONTHS[tab.month], String(tab.year));
+    const i = monthTabs.indexOf(tab), yt = state.tabs.find(t => t.kind === 'year');
+    navBar(pg,
+      [{ label: '< ' + (monthTabs[i - 1] ? MONTHS[monthTabs[i - 1].month].slice(0, 3) : ''), key: monthTabs[i - 1] && 'tab:' + monthTabs[i - 1].id }],
+      [{ label: (monthTabs[i + 1] ? MONTHS[monthTabs[i + 1].month].slice(0, 3) : '') + ' >', key: monthTabs[i + 1] && 'tab:' + monthTabs[i + 1].id }, { label: 'Calendar', key: yt && 'tab:' + yt.id }]);
+    const off = (new Date(tab.year, tab.month, 1).getDay() - state.weekStart + 7) % 7, n = daysIn(tab.year, tab.month), rows = Math.ceil((off + n) / 7);
+    const bh = 84, hy = BODY_TOP - 4, gridBottom = H - 36 - bh - 18, cw = CW / 7, ch = (gridBottom - hy - 14) / rows;
+    for (let c = 0; c < 7; c++) textC(pg, M + c * cw + cw / 2, hy + 8, DOWS[(c + state.weekStart) % 7].toUpperCase(), 6.6, C.muted, false, null, 1.4);
+    for (let d = 1; d <= n; d++) {
+      const k = dateKey(tab.year, tab.month, d), idx = off + d - 1, x = M + (idx % 7) * cw, y = hy + 14 + Math.floor(idx / 7) * ch;
+      if (k === today) pg.fillRect(x, y, cw, ch, C.today);
+      pg.strokeRect(x, y, cw, ch, C.goldSoft, 0.6);
+      pg.text(x + 4, y + 11, String(d), 8.5, C.legend, false, false, 'legend');
+      if (state.days[k]) drawPlainSnippet(pg, state.days[k], x + 4, y + 21, cw - 8, Math.floor((ch - 24) / 9));
+      pg.link(x, y, cw, ch, dayTarget(k));
+    }
+    if (o.weekly !== 'none') for (let r = 0; r < rows; r++) {
+      const k = dateKey(tab.year, tab.month, Math.max(1, r * 7 - off + 1)), ws = weekStartOf(k), key = first.has('week:' + ws) ? 'week:' + ws : null, y = hy + 14 + r * ch;
+      pg.rrect(M - 17, y + 3, 15, Math.min(ch - 6, 54), 5, C.cell, C.goldSoft, 0.5);
+      pg.text(M - 14.5, y + 15, 'W' + (r + 1), 6, C.legend, false, false, 'legend'); pg.link(M - 17, y + 3, 15, Math.min(ch - 6, 54), key);
+    }
+    const by = H - 36 - bh, lw = Math.round(CW * 0.58);
+    box(pg, M, by, lw - 8, bh, 'Goals for the month'); checkRows(pg, M, by + 4, lw - 8, 3, 22, false);
+    box(pg, M + lw + 8, by, CW - lw - 8, bh, 'Notes'); drawStyleBg(pg, 'dotted', M + lw + 18, by + 12, CW - lw - 28, bh - 22);
+  }
+
+  /* ================= week ================= */
+  function weekSelector(pg, tab, ws) {
+    const list = monthWeeks.get(tab.id) || [];
+    if (list.length < 2) return;
+    const r = 8.5, gap = 5; let x = R - list.length * (2 * r + gap) + gap + r;
+    list.forEach((w0, i) => {
+      const act = w0 === ws, s = 'W' + (i + 1);
+      if (act) pg.circle(x, 62, r, C.gold); else pg.circleStroke(x, 62, r, C.gold, 0.7);
+      pg.text(x - tw(s, 6.5, false, 'legend') / 2, 64.4, s, 6.5, act ? onGold() : C.legend, false, false, 'legend');
+      pg.link(x - r, 62 - r, 2 * r, 2 * r, 'week:' + w0); x += 2 * r + gap;
+    });
+  }
+  function dayBoxElegant(pg, k, x, y, w, h, side) {
+    const labelW = side ? 66 : 0, dn = DOWS[dowOf(k)];
+    pg.rrect(x, y, w, h, 10, k === today ? C.today : null, C.gold, 0.7);
+    if (side) { textC(pg, x + labelW / 2, y + 18, dn, 12, C.titleC, false, 'legend'); textC(pg, x + labelW / 2, y + 30, shortDate(k).toUpperCase(), 6.3, C.muted, false, null, 1); pg.line(x + labelW, y + 8, x + labelW, y + h - 8, C.goldSoft, 0.5); }
+    else { textC(pg, x + w / 2, y + 15, `${dn}  ${shortDate(k)}`, 9.5, C.titleC, false, 'legend'); pg.line(x + 10, y + 22, x + w - 10, y + 22, C.goldSoft, 0.5); }
+    pg.link(x, y, side ? labelW : w, side ? h : 22, first.has('day:' + k) ? 'day:' + k : null);
+    const ly = side ? y : y + 22, lh = side ? h : h - 22, step = 16, tx = x + labelW + 8;
+    for (let yy = ly + step; yy < ly + lh - 3; yy += step) pg.dashed(x + labelW + 6, yy, x + w - 8, C.goldSoft, 0.5, 1, 2.6);
+    if (state.days[k]) drawRich(pg, wrapRich(state.days[k], w - labelW - 18, 8.5), tx, ly + step - 4, step, 8.5, Math.max(1, Math.floor((lh - 6) / step)));
+  }
+  function weekElegant(pg, spec) {
+    const tab = spec.tab, ws = spec.ws, days = Array.from({ length: 7 }, (_, i) => addDays(ws, i)), b = parseKey(days[6]);
+    chromeElegant(pg, tab, spec);
+    titleElegant(pg, 'Weekly Planner', `${shortDate(ws)} - ${shortDate(days[6])}, ${b.y}`);
+    weekSelector(pg, tab, ws);
+    navBar(pg,
+      [{ label: '< Prev week', key: first.has('week:' + addDays(ws, -7)) ? 'week:' + addDays(ws, -7) : null }, { label: 'Next week >', key: first.has('week:' + addDays(ws, 7)) ? 'week:' + addDays(ws, 7) : null }],
+      [{ label: MONTHS[tab.month] + ' ' + tab.year, key: 'tab:' + tab.id }]);
+    const x = M, y = BODY_TOP, w = CW, h = H - 36 - y, lw = Math.round(w * 0.6), rh = h / 7;
+    days.forEach((k, i) => {
+      const yy = y + i * rh;
+      if (k === today) pg.rrect(x - 3, yy + 2, lw + 6, rh - 4, 8, C.today, null);
+      else if (i) pg.dashed(x, yy, x + lw, C.goldSoft, 0.6, 1.2, 2.4);
+      textC(pg, x + 33, yy + 22, DOW_FULL[dowOf(k)], 11, C.titleC, false, 'legend');
+      textC(pg, x + 33, yy + 34, shortDate(k).toUpperCase(), 6.3, C.muted, false, null, 1);
+      pg.link(x, yy, 68, rh, first.has('day:' + k) ? 'day:' + k : null);
+      for (let ly = yy + 16; ly < yy + rh - 3; ly += 16) pg.dashed(x + 72, ly, x + lw - 4, C.goldSoft, 0.5, 1, 2.6);
+      if (state.days[k]) drawRich(pg, wrapRich(state.days[k], lw - 84, 8.5), x + 74, yy + 13, 16, 8.5, Math.max(1, Math.floor((rh - 8) / 16)));
+    });
+    const rx = x + lw + 16, rw = w - lw - 16, fh = Math.round(h * 0.2), th2 = Math.round(h * 0.42), nh = h - fh - th2 - 36;
+    box(pg, rx, y + 6, rw, fh, 'Weekly focus'); checkRows(pg, rx, y + 10, rw, Math.floor((fh - 12) / 22), 22, false);
+    box(pg, rx, y + fh + 24, rw, th2, 'To-do list'); checkRows(pg, rx, y + fh + 28, rw, Math.floor((th2 - 8) / 24), 24, true);
+    box(pg, rx, y + fh + th2 + 42, rw, nh - 6, 'Notes'); drawStyleBg(pg, 'dotted', rx + 8, y + fh + th2 + 52, rw - 16, nh - 24);
+  }
+
+  /* ================= daily planner ================= */
+  function plannerDay(pg, spec) {
+    const k = spec.date, tab = spec.tab, { y: yy, m, d } = parseKey(k), ws = weekStartOf(k);
+    chrome(pg, tab, spec);
+    title(pg, 'Daily Planner', `${DOW_FULL[dowOf(k)]}, ${MONTHS[m]} ${d}, ${yy}`);
+    navBar(pg,
+      [{ label: '< ' + shortDate(addDays(k, -1)), key: dayTarget(addDays(k, -1)) }, { label: shortDate(addDays(k, 1)) + ' >', key: dayTarget(addDays(k, 1)) }],
+      [{ label: 'Week', key: first.has('week:' + ws) ? 'week:' + ws : null }, { label: MONTHS[tab.month].slice(0, 3) + ' ' + tab.year, key: 'tab:' + tab.id }]);
+    const x = M, w = CW, bottom = H - 34, ink = ELEG ? C.gold : C.muted;
+    let y = BODY_TOP - 2;
+    // trackers: water, mood, meals
+    const lab = (s, lx) => pg.text(lx, y + 4, s.toUpperCase(), 5.8, C.muted, false, false, null, 1.2);
+    lab('Water', x); for (let i = 0; i < 8; i++) drop(pg, x + 6 + i * 15, y + 20, ink);
+    const mx = x + w * 0.42; lab('Mood', mx); for (let i = 0; i < 5; i++) pg.circleStroke(mx + 6 + i * 16, y + 17, 5.2, ink, 0.8);
+    const sx = x + w * 0.7; lab('Meals', sx); ['B', 'L', 'D', 'S'].forEach((c, i) => { pg.circleStroke(sx + 6 + i * 17, y + 17, 5.8, ink, 0.8); pg.text(sx + 6 + i * 17 - tw(c, 6, false, 'legend') / 2, y + 19.4, c, 6, C.legend, false, false, 'legend'); });
+    y += 40;
+    const lwid = Math.round(w * 0.43), gap = 14, rx = x + lwid + gap, rw = w - lwid - gap, avail = bottom - y;
+    const priH = 86, notesH = Math.round(avail * 0.27), todoH = avail - priH - notesH - 2 * 16;
+    // left column
+    box(pg, x, y, lwid, priH, 'Top priority'); checkRows(pg, x, y + boxPad - 8, lwid, 3, 24, true);
+    box(pg, x, y + priH + 16, lwid, todoH, 'To-do list'); checkRows(pg, x, y + priH + 16 + boxPad - 8, lwid, Math.floor((todoH - boxPad) / 22), 22, true);
+    const ny = y + priH + todoH + 32;
+    box(pg, x, ny, lwid, notesH, 'Notes');
+    drawStyleBg(pg, o.dailyStyle === 'schedule' ? 'dotted' : o.dailyStyle, x + 8, ny + 10, lwid - 16, notesH - 18);
+    const entry = state.days[k];
+    if (entry) drawRich(pg, wrapRich(entry, lwid - 20, 8.5), x + 10, ny + 20, 12, 8.5, Math.max(1, Math.floor((notesH - 28) / 12)));
+    // schedule
+    box(pg, rx, y, rw, avail, 'Schedule');
+    const hrs = 15, sh = (avail - 22) / hrs;
+    for (let i = 0; i < hrs; i++) {
+      const hr = 6 + i, yy2 = y + 16 + (i + 1) * sh;
+      pg.text(rx + 10, yy2 - 3, `${hr % 12 || 12} ${hr < 12 ? 'AM' : 'PM'}`, 6.6, C.legend, false, false, 'legend');
+      pg.dashed(rx + 40, yy2, rx + rw - 10, ELEG ? C.goldSoft : C.line, 0.6, 1, 2.4);
+    }
+  }
+
   const draw = spec => {
-    const pg = new Pg(W, H); pg.soft = SOFT; pg.shadow = C.shadow;
-    ({ index: indexPage, year: yearPage, month: monthPage, week: weekPage, day: dayPage, notes: notesPage })[spec.type](pg, spec);
+    const pg = new Pg(W, H); pg.soft = ROUNDED; pg.shadow = SOFT ? C.shadow : null;
+    ({ cover: coverPage, index: indexPage, year: yearPage, month: monthPage, week: weekPage, day: dayPage, notes: notesPage })[spec.type](pg, spec);
     return pg;
   };
-  return { specs, first, W, H, draw, fontKey, headKey, count: specs.length };
+  return { specs, first, W, H, draw, fontKey, headKey, titleKey, legendKey, M, count: specs.length };
 }
 
 /* ---------- PDF serialisation ---------- */
@@ -594,17 +914,17 @@ async function deflateBytes(bytes) {
 
 async function generate(state, opts) {
   const o = { ...DEFAULTS, ...opts };
-  await Promise.all([resolveFont(state, o), resolveHead(state, o)].filter(Boolean).map(loadFont));
+  await Promise.all(fontKeys(state, o).map(loadFont));
   Object.values(loaded).forEach(F => F.used.clear());
   fontReg = new Map();
   const S = session(state, opts), n = S.specs.length, W = S.W, H = S.H;
-  curBody = S.fontKey; curHead = S.headKey;
+  curBody = S.fontKey; curHead = S.headKey; curTitle = S.titleKey; curLegend = S.legendKey; M = S.M;
   const pages = S.specs.map(S.draw);
   if (!fontReg.size) fontRes('helvetica', false);
   const pageObj = i => 3 + 2 * i, contentObj = i => 4 + 2 * i;
   let next = 3 + 2 * n;                                         // annotation ids start after all page/content objects
   const annots = pages.map(pg => pg.links.map(l => ({ id: next++, l })).filter(a => S.first.has(a.l.key)));
-  const outline = state.tabs.filter(t => S.first.has('tab:' + t.id)).map(t => ({ id: 0, title: t.name, page: S.first.get('tab:' + t.id) }));
+  const outline = (S.first.has('cover') ? [{ id: 0, title: 'Cover', page: S.first.get('cover') }] : []).concat(state.tabs.filter(t => S.first.has('tab:' + t.id)).map(t => ({ id: 0, title: t.name, page: S.first.get('tab:' + t.id) })));
   const outRoot = outline.length ? next++ : 0;
   outline.forEach(it => { it.id = next++; });
   const infoId = next++;
@@ -668,7 +988,7 @@ async function generate(state, opts) {
 
 window.JournalPDF = {
   DEFAULTS, generate,
-  ready: (state, opts) => { const o = { ...DEFAULTS, ...opts }; return Promise.all([resolveFont(state, o), resolveHead(state, o)].filter(Boolean).map(loadFont)).catch(() => {}); },
+  ready: (state, opts) => { const o = { ...DEFAULTS, ...opts }; return Promise.all(fontKeys(state, o).map(loadFont)).catch(() => {}); },
   count: (state, opts) => session(state, opts).count,
 };
 })();
