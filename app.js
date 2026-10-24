@@ -127,12 +127,55 @@ const chipsHtml = text => {
 };
 
 /* ---------- Routing ---------- */
+/* Route lives in the page (not only in location.hash) so it also works inside a sandboxed viewer
+   that ignores #/path navigation. history/hash are still updated when the browser allows it. */
+const VALID_ROUTE = /^#\/(tab|day|new)\//;
+let routeHash = VALID_ROUTE.test(location.hash) ? location.hash : '#/tab/index';
+const trail = [];
+function go(h, replace) {
+  if (!replace && h !== routeHash) trail.push(routeHash);
+  routeHash = h;
+  try { history[replace ? 'replaceState' : 'pushState'](null, '', h); } catch (e) { /* sandboxed */ }
+  render();
+}
 function parseRoute() {
-  const [, kind, arg] = (location.hash || '').split('/');
+  const [, kind, arg] = routeHash.split('/');
   return { kind: kind || 'tab', arg: arg ? decodeURIComponent(arg) : '' };
 }
 let previewMode = false;
 let lastRouteKey = '';
+
+/* In-page replacements for confirm()/alert(), which the hosted viewer disables. */
+function askConfirm(message, okLabel = 'Confirm') {
+  return new Promise(resolve => {
+    const m = $('modal');
+    m.innerHTML = `<div class="modal-card" role="dialog" aria-modal="true"><p>${esc(message)}</p><div class="row"><button class="btn" data-m="no">Cancel</button><button class="btn primary" data-m="yes">${esc(okLabel)}</button></div></div>`;
+    m.hidden = false;
+    const done = v => { m.hidden = true; m.innerHTML = ''; m.onclick = null; document.removeEventListener('keydown', onKey); resolve(v); };
+    const onKey = e => { if (e.key === 'Escape') done(false); };
+    document.addEventListener('keydown', onKey);
+    m.onclick = e => { const b = e.target.closest('[data-m]'); if (b) done(b.dataset.m === 'yes'); else if (e.target === m) done(false); };
+    m.querySelector('[data-m="yes"]').focus();
+  });
+}
+let toastTimer;
+function notify(message) {
+  const t = $('toast'); t.textContent = message; t.hidden = false;
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => { t.hidden = true; }, 5000);
+}
+/* Save a file: through the viewer's downloads capability when hosted, otherwise a normal download. */
+async function saveFile(filename, blob) {
+  let dl = null;
+  try { dl = window.claude && window.claude.use ? await window.claude.use('downloads') : null; } catch (e) { dl = null; }
+  if (dl) {
+    try { await dl.save({ filename, data: blob }); notify(`Saved ${filename}`); }
+    catch (err) { if (!err || err.code !== 'declined') notify(`Could not save ${filename}: ${(err && (err.message || err.code)) || 'unknown error'}`); }
+    return;
+  }
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = filename; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+}
 
 function render() {
   const route = parseRoute();
@@ -140,12 +183,13 @@ function render() {
     const name = route.arg || 'Untitled';
     let tab = state.tabs.find(t => t.name.toLowerCase() === name.toLowerCase());
     if (!tab) { tab = mk(name, 'notes', '#777'); state.tabs.push(tab); save(); }
-    location.replace(`#/tab/${tab.id}`);
+    go(`#/tab/${tab.id}`, true);
     return;
   }
-  if (route.kind === 'day' && route.arg === 'today') { location.replace(`#/day/${todayKey()}`); return; }
+  if (route.kind === 'day' && route.arg === 'today') { go(`#/day/${todayKey()}`, true); return; }
 
-  const key = location.hash;
+  const key = routeHash;
+  $('backBtn').hidden = !trail.length;
   if (key !== lastRouteKey) { previewMode = false; lastRouteKey = key; }
 
   applyTheme();
@@ -310,11 +354,8 @@ async function exportPdf(btn) {
   btn.disabled = true; const label = btn.textContent; btn.textContent = 'Building…';
   try {
     const blob = await JournalPDF.generate(state, pdfOpts());
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = (state.title.replace(/[^\w -]+/g, '').trim() || 'calendar-journal') + '.pdf';
-    a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 5000);
-  } catch (err) { alert('PDF export failed: ' + err.message); console.error(err); }
+    await saveFile((state.title.replace(/[^\w -]+/g, '').trim() || 'calendar-journal') + '.pdf', blob);
+  } catch (err) { notify('PDF export failed: ' + err.message); console.error(err); }
   btn.disabled = false; btn.textContent = label;
 }
 
@@ -378,7 +419,6 @@ function renderSettings() {
     <div class="row">
       <button class="btn" id="exportBtn">Export JSON</button>
       <button class="btn" id="importBtn">Import JSON</button>
-      <button class="btn" id="printBtn">Print page</button>
       <button class="btn danger" id="resetBtn">Reset all</button>
     </div>
     <input type="file" id="importFile" accept="application/json" hidden>
@@ -414,25 +454,25 @@ document.addEventListener('change', e => {
         const s = JSON.parse(r.result);
         if (!Array.isArray(s.tabs)) throw new Error('missing tabs');
         state = { ...defaultState(), ...s };
-        location.hash = '#/tab/index'; refresh(true);
-      } catch (err) { alert('Could not import that file: ' + err.message); }
+        go('#/tab/index', true); refresh(true);
+      } catch (err) { notify('Could not import that file: ' + err.message); }
     };
     r.readAsText(t.files[0]);
   }
 });
 
-document.addEventListener('click', e => {
+document.addEventListener('click', async e => {
   const b = e.target.closest('button');
   if (!b) return;
   const d = b.dataset;
   if (b.id === 'closeSettings') return openSettings(false);
   if (d.preset) {
-    if (!confirm(`Apply the “${PRESETS[d.preset].label}” preset? Your tabs will be replaced (entries and notes pages are kept).`)) return;
+    if (!await askConfirm(`Apply the “${PRESETS[d.preset].label}” preset? Your tabs will be replaced (entries and notes pages are kept).`, 'Apply preset')) return;
     const keep = state.tabs.filter(t => t.kind === 'notes' && (state.notes[t.id] || '').trim());
     const fresh = PRESETS[d.preset].build(state.year);
     const names = new Set(fresh.map(t => t.name.toLowerCase()));
     state.tabs = [...fresh, ...keep.filter(t => !names.has(t.name.toLowerCase()))];
-    location.hash = '#/tab/index'; refresh(true);
+    go('#/tab/index', true); refresh(true);
   } else if (d.themepreset) {
     const t = THEMES[d.themepreset];
     Object.assign(state.theme, { preset: d.themepreset, paper: t.paper, ink: t.ink, accent: t.accent, bar: t.bar, today: t.today });
@@ -442,9 +482,9 @@ document.addEventListener('click', e => {
     [state.tabs[i], state.tabs[j]] = [state.tabs[j], state.tabs[i]]; refresh(true);
   } else if (d.del !== undefined) {
     const t = state.tabs[+d.del];
-    if (!confirm(`Delete the “${t.name}” tab?${t.kind === 'notes' ? ' Its notes will be lost.' : ''}`)) return;
+    if (!await askConfirm(`Delete the “${t.name}” tab?${t.kind === 'notes' ? ' Its notes will be lost.' : ''}`, 'Delete')) return;
     state.tabs.splice(+d.del, 1); delete state.notes[t.id];
-    if (!tabById(parseRoute().arg) && parseRoute().kind === 'tab') location.hash = '#/tab/index';
+    if (!tabById(parseRoute().arg) && parseRoute().kind === 'tab') go('#/tab/index', true);
     refresh(true);
   } else if (b.id === 'addNotes') {
     const t = mk(`Page ${state.tabs.length + 1}`, 'notes', '#777'); state.tabs.push(t); refresh(true);
@@ -454,23 +494,25 @@ document.addEventListener('click', e => {
   } else if (b.id === 'addYear') {
     state.tabs.push(mk('Year', 'year', '#c0563b', { year: state.year, month: 0 })); refresh(true);
   } else if (b.id === 'exportBtn') {
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' }));
-    a.download = 'calendar-journal.json'; a.click(); URL.revokeObjectURL(a.href);
+    saveFile('calendar-journal.json', new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' }));
   } else if (b.id === 'importBtn') $('importFile').click();
-  else if (b.id === 'printBtn') window.print();
   else if (b.id === 'pdfBtn') exportPdf(b);
   else if (b.id === 'resetBtn') {
-    if (!confirm('Erase everything and start over?')) return;
-    state = defaultState(); location.hash = '#/tab/index'; refresh(true);
+    if (!await askConfirm('Erase everything and start over?', 'Erase everything')) return;
+    state = defaultState(); go('#/tab/index', true); refresh(true);
   }
 });
 
 $('settingsBtn').onclick = () => openSettings($('settings').hidden);
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('settings').hidden) openSettings(false); });
-window.addEventListener('hashchange', render);
+window.addEventListener('hashchange', () => { if (VALID_ROUTE.test(location.hash) && location.hash !== routeHash) { routeHash = location.hash; render(); } });
+window.addEventListener('popstate', () => { if (VALID_ROUTE.test(location.hash)) { routeHash = location.hash; render(); } });
+document.addEventListener('click', e => {
+  const link = e.target.closest('a[href^="#/"]');
+  if (link) { e.preventDefault(); go(link.getAttribute('href')); }
+});
+$('backBtn').onclick = () => { if (trail.length) go(trail.pop(), true); };
 window.addEventListener('pagehide', () => { try { localStorage.setItem(STORE_KEY, JSON.stringify(state)); } catch (e) { /* ignore */ } });
 
-if (!location.hash) location.replace('#/tab/index');
 render();
 })();

@@ -10,6 +10,7 @@
 <header class="topbar">
   <a class="brand" href="#/tab/index" id="brand">Journal</a>
   <div class="topbar-actions">
+    <button class="btn" id="backBtn" hidden>Back</button>
     <a class="btn" id="todayBtn" href="#/day/today">Today</a>
     <button class="btn" id="settingsBtn" aria-expanded="false" aria-controls="settings">⚙ Customize</button>
   </div>
@@ -22,6 +23,9 @@
 </main>
 
 <aside class="settings" id="settings" hidden aria-label="Customize journal"></aside>
+
+<div class="modal" id="modal" hidden></div>
+<div class="toast" id="toast" role="status" hidden></div>
 
 <script src="pdf.js"></script>
 <script src="app.js"></script>

@@ -68,3 +68,7 @@ A zero-dependency web app (static HTML/CSS/JS, open `index.html`) for building y
 ## Phase 5 — PDF heading font
 - Bold text in the PDF (titles, month names, day labels, tab names, buttons) can use its own heading font. Options: Match journal heading font (default), Same as body (bold), or any PDF font.
 - The writer now tracks every font actually used per document (resource registry), so it can embed two families at once (e.g. Caveat body + Playfair Display headings) and only writes what is used.
+
+## Phase 6 — Hosting
+- `artifact.html` is the publish entry (same app, no document wrapper). Published as a private claude.ai artifact with the `downloads` capability.
+- Hosted-viewer adaptations (also fine standalone): in-page routing with a Back button (the viewer ignores `#/path` navigation), in-page confirm dialog and toast (native `confirm`/`alert` are disabled), file saves go through `claude.use("downloads")` with an anchor fallback, Print button removed (PDF export replaces it).
