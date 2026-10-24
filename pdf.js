@@ -16,7 +16,7 @@ const M = 36;           // page margin
 const TOP = 52;         // below the tab strip
 const BODY_TOP = 124;   // below title + nav row
 
-const DEFAULTS = { font: 'auto', size: 'a4', orient: 'portrait', useTheme: true, weekly: 'rows', daily: 'none', dailyStyle: 'lined', notesStyle: 'lined', notesPages: 2 };
+const DEFAULTS = { font: 'auto', headFont: 'auto', size: 'a4', orient: 'portrait', useTheme: true, weekly: 'rows', daily: 'none', dailyStyle: 'lined', notesStyle: 'lined', notesPages: 2 };
 
 /* ---------- small helpers ---------- */
 const pad = n => String(n).padStart(2, '0');
@@ -69,6 +69,12 @@ const AUTO_FONT = {
 };
 const autoFont = css => AUTO_FONT[(css || '').split(',')[0].trim().replace(/["']/g, '').toLowerCase()] || 'helvetica';
 const resolveFont = (state, o) => (BUILTIN[o.font] || EMBEDDED[o.font]) ? o.font : autoFont(state.theme.font);
+/* heading font = the face used for bold text (titles, labels, buttons); null means "bold version of the body font" */
+function resolveHead(state, o) {
+  const body = resolveFont(state, o);
+  const h = o.headFont === 'same' ? null : (BUILTIN[o.headFont] || EMBEDDED[o.headFont]) ? o.headFont : state.theme.headFont ? autoFont(state.theme.headFont) : null;
+  return h && h !== body ? h : null;
+}
 
 const REV = Object.fromEntries(Object.entries(CP).map(([u, b]) => [b, +u]));
 const loaded = {};                       // key -> parsed TrueType font
@@ -132,7 +138,9 @@ function loadFont(key) {
   }));
   return loading.get(key);
 }
-const emb = () => loaded[curFont] || null;
+let curBody = 'helvetica', curHead = null;
+const faceFor = bold => (bold && curHead) || curBody;     // font key used for a piece of text
+const emb = key => loaded[key] || null;
 /* glyph ids for a string; unsupported characters fall back to '?' */
 function gidsOf(F, s) {
   const e = enc(s), out = [];
@@ -145,14 +153,14 @@ function gidsOf(F, s) {
   return out;
 }
 
-let curFont = 'helvetica', measureCtx; const mcache = new Map();
+let measureCtx; const mcache = new Map();
 function tw(s, size, bold) {
-  const F = emb();
+  const key = faceFor(bold), F = emb(key), fake = bold && !curHead;
   if (F) {
     let sum = 0; for (const g of gidsOf(F, s)) sum += F.adv(g);
-    return sum / F.upm * size * (SCALE[curFont] || 1) * (bold ? 1.04 : 1);
+    return sum / F.upm * size * (SCALE[key] || 1) * (fake ? 1.04 : 1);
   }
-  const fam = BUILTIN[curFont] || BUILTIN.helvetica, k = (BUILTIN[curFont] ? curFont : 'helvetica') + (bold ? 'b' : 'r') + s;
+  const fam = BUILTIN[key] || BUILTIN.helvetica, k = (BUILTIN[key] ? key : 'helvetica') + (bold ? 'b' : 'r') + s;
   let w = mcache.get(k);
   if (w === undefined) {
     measureCtx = measureCtx || document.createElement('canvas').getContext('2d');
@@ -202,6 +210,15 @@ function wrapRich(text, width, size) {
 }
 
 /* ---------- page canvas (top-left origin) ---------- */
+/* fonts actually used by the pages being drawn: resource name -> font */
+let fontReg = new Map();
+function fontRes(key, bold) {
+  const id = key + (BUILTIN[key] && bold ? '|b' : '');
+  let r = fontReg.get(id);
+  if (!r) { r = { name: 'F' + (fontReg.size + 1), key, bold: !!(BUILTIN[key] && bold) }; fontReg.set(id, r); }
+  return r.name;
+}
+
 class Pg {
   constructor(W, H) { this.W = W; this.H = H; this.ops = []; this.links = []; }
   rect(x, y, w, h, fill, stroke, lw) {
@@ -217,11 +234,11 @@ class Pg {
     this.ops.push('Q');
   }
   text(x, y, s, size, color, bold) {
-    const F = emb();
-    if (F) {                                   // embedded CID font: hex glyph ids, faux bold via stroke
-      const hexs = gidsOf(F, s).map(g => g.toString(16).padStart(4, '0')).join('');
-      this.ops.push(`q ${bold ? `${rg(color)} RG ${f(size * 0.03)} w 2 Tr ` : ''}BT /F1 ${f(size * (SCALE[curFont] || 1))} Tf ${rg(color)} rg ${f(x)} ${f(this.H - y)} Td <${hexs}> Tj ET Q`);
-    } else this.ops.push(`BT /${bold ? 'F2' : 'F1'} ${size} Tf ${rg(color)} rg ${f(x)} ${f(this.H - y)} Td ${pdfStr(s)} Tj ET`);
+    const key = faceFor(bold), F = emb(key);
+    if (F) {                                   // embedded CID font: hex glyph ids; faux bold (stroke) only when there is no heading font
+      const hexs = gidsOf(F, s).map(g => g.toString(16).padStart(4, '0')).join(''), fake = bold && !curHead;
+      this.ops.push(`q ${fake ? `${rg(color)} RG ${f(size * 0.03)} w 2 Tr ` : ''}BT /${fontRes(key, false)} ${f(size * (SCALE[key] || 1))} Tf ${rg(color)} rg ${f(x)} ${f(this.H - y)} Td <${hexs}> Tj ET Q`);
+    } else this.ops.push(`BT /${fontRes(BUILTIN[key] ? key : 'helvetica', bold)} ${size} Tf ${rg(color)} rg ${f(x)} ${f(this.H - y)} Td ${pdfStr(s)} Tj ET`);
   }
   link(x, y, w, h, key) { if (key) this.links.push({ x, y, w, h, key }); }
 }
@@ -229,8 +246,8 @@ class Pg {
 /* ---------- the document session: plan pages, then draw them ---------- */
 function session(state, optsIn) {
   const o = { ...DEFAULTS, ...optsIn };
-  const fontKey = resolveFont(state, o);
-  curFont = fontKey;
+  const fontKey = resolveFont(state, o), headKey = resolveHead(state, o);
+  curBody = fontKey; curHead = headKey;
   const [bw, bh] = SIZES[o.size] || SIZES.a4;
   const W = o.orient === 'landscape' ? bh : bw, H = o.orient === 'landscape' ? bw : bh;
   const th = state.theme;
@@ -503,7 +520,7 @@ function session(state, optsIn) {
     ({ index: indexPage, year: yearPage, month: monthPage, week: weekPage, day: dayPage, notes: notesPage })[spec.type](pg, spec);
     return pg;
   };
-  return { specs, first, W, H, draw, fontKey, count: specs.length };
+  return { specs, first, W, H, draw, fontKey, headKey, count: specs.length };
 }
 
 /* ---------- PDF serialisation ---------- */
@@ -515,20 +532,23 @@ async function deflateBytes(bytes) {
 }
 
 async function generate(state, opts) {
-  await loadFont(resolveFont(state, { ...DEFAULTS, ...opts }));
-  const F = loaded[resolveFont(state, { ...DEFAULTS, ...opts })];
-  if (F) F.used.clear();
+  const o = { ...DEFAULTS, ...opts };
+  await Promise.all([resolveFont(state, o), resolveHead(state, o)].filter(Boolean).map(loadFont));
+  Object.values(loaded).forEach(F => F.used.clear());
+  fontReg = new Map();
   const S = session(state, opts), n = S.specs.length, W = S.W, H = S.H;
-  curFont = S.fontKey;
+  curBody = S.fontKey; curHead = S.headKey;
   const pages = S.specs.map(S.draw);
-  const pageObj = i => 5 + 2 * i, contentObj = i => 6 + 2 * i;
-  let next = 5 + 2 * n;                                         // annotation ids start after all page/content objects
+  if (!fontReg.size) fontRes('helvetica', false);
+  const pageObj = i => 3 + 2 * i, contentObj = i => 4 + 2 * i;
+  let next = 3 + 2 * n;                                         // annotation ids start after all page/content objects
   const annots = pages.map(pg => pg.links.map(l => ({ id: next++, l })).filter(a => S.first.has(a.l.key)));
   const outline = state.tabs.filter(t => S.first.has('tab:' + t.id)).map(t => ({ id: 0, title: t.name, page: S.first.get('tab:' + t.id) }));
   const outRoot = outline.length ? next++ : 0;
   outline.forEach(it => { it.id = next++; });
   const infoId = next++;
-  const E = F ? { type0: next++, cid: next++, desc: next++, file: next++, tou: next++ } : null;
+  const fonts = [...fontReg.values()].map(r => ({ ...r, ids: EMBEDDED[r.key] ? { type0: next++, cid: next++, desc: next++, file: next++, tou: next++ } : { type0: next++ } }));
+  const fontDict = fonts.map(r => `/${r.name} ${r.ids.type0} 0 R`).join(' ');
   const total = next;
 
   const chunks = [], offsets = []; let off = 0;
@@ -538,13 +558,10 @@ async function generate(state, opts) {
   w('%PDF-1.5\n%\xE2\xE3\xCF\xD3\n');
   obj(1, `<< /Type /Catalog /Pages 2 0 R${outRoot ? ` /Outlines ${outRoot} 0 R /PageMode /UseOutlines` : ''} >>`);
   obj(2, `<< /Type /Pages /Kids [${pages.map((_, i) => pageObj(i) + ' 0 R').join(' ')}] /Count ${n} >>`);
-  const B = BUILTIN[S.fontKey] || BUILTIN.helvetica;
-  obj(3, `<< /Type /Font /Subtype /Type1 /BaseFont /${B.base} /Encoding /WinAnsiEncoding >>`);
-  obj(4, `<< /Type /Font /Subtype /Type1 /BaseFont /${B.bold} /Encoding /WinAnsiEncoding >>`);
 
   for (let i = 0; i < n; i++) {
     const ann = annots[i].map(a => a.id + ' 0 R').join(' ');
-    obj(pageObj(i), `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${f(W)} ${f(H)}] /Resources << /Font << ${E ? `/F1 ${E.type0} 0 R` : '/F1 3 0 R /F2 4 0 R'} >> >> /Contents ${contentObj(i)} 0 R${ann ? ` /Annots [${ann}]` : ''} >>`);
+    obj(pageObj(i), `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${f(W)} ${f(H)}] /Resources << /Font << ${fontDict} >> >> /Contents ${contentObj(i)} 0 R${ann ? ` /Annots [${ann}]` : ''} >>`);
     const { bytes, filter } = await deflate(pages[i].ops.join('\n'));
     offsets[contentObj(i)] = off;
     w(`${contentObj(i)} 0 obj\n<< ${filter}/Length ${bytes.length} >>\nstream\n`); w(bytes); w('\nendstream\nendobj\n');
@@ -560,8 +577,15 @@ async function generate(state, opts) {
   const now = new Date();
   obj(infoId, `<< /Title ${pdfStr(state.title)} /Producer (Calendar Journal) /CreationDate (D:${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}) >>`);
 
-  if (E) {
-    const name = EMBEDDED[S.fontKey], gids = [...F.used.keys()].sort((a, b) => a - b), sc = 1000 / F.upm;
+  for (const r of fonts) {
+    if (!BUILTIN[r.key]) continue;
+    const B = BUILTIN[r.key];
+    obj(r.ids.type0, `<< /Type /Font /Subtype /Type1 /BaseFont /${r.bold ? B.bold : B.base} /Encoding /WinAnsiEncoding >>`);
+  }
+  for (const r of fonts) {
+    if (!EMBEDDED[r.key]) continue;
+    const E = r.ids, F = loaded[r.key];
+    const name = EMBEDDED[r.key], gids = [...F.used.keys()].sort((a, b) => a - b), sc = 1000 / F.upm;
     obj(E.type0, `<< /Type /Font /Subtype /Type0 /BaseFont /${name} /Encoding /Identity-H /DescendantFonts [${E.cid} 0 R] /ToUnicode ${E.tou} 0 R >>`);
     obj(E.cid, `<< /Type /Font /Subtype /CIDFontType2 /BaseFont /${name} /CIDSystemInfo << /Registry (Adobe) /Ordering (Identity) /Supplement 0 >> /FontDescriptor ${E.desc} 0 R /CIDToGIDMap /Identity /DW 500 /W [${gids.map(g => `${g} [${Math.round(F.adv(g) * sc)}]`).join(' ')}] >>`);
     obj(E.desc, `<< /Type /FontDescriptor /FontName /${name} /Flags 32 /FontBBox [${F.bbox.map(v => Math.round(v * sc)).join(' ')}] /ItalicAngle 0 /Ascent ${Math.round(F.ascent * sc)} /Descent ${Math.round(F.descent * sc)} /CapHeight ${Math.round(F.ascent * sc * 0.7)} /StemV 80 /FontFile2 ${E.file} 0 R >>`);
@@ -583,7 +607,7 @@ async function generate(state, opts) {
 
 window.JournalPDF = {
   DEFAULTS, generate,
-  ready: (state, opts) => loadFont(resolveFont(state, { ...DEFAULTS, ...opts })).catch(() => {}),
+  ready: (state, opts) => { const o = { ...DEFAULTS, ...opts }; return Promise.all([resolveFont(state, o), resolveHead(state, o)].filter(Boolean).map(loadFont)).catch(() => {}); },
   count: (state, opts) => session(state, opts).count,
 };
 })();

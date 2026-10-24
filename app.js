@@ -362,7 +362,8 @@ function renderSettings() {
 
     <h3>Export to PDF</h3>
     <p class="hint">Makes a hyperlinked PDF you can open in GoodNotes, Notability, Notes+ and similar apps. Tabs, calendar days, weeks and [[links]] stay tappable.</p>
-    ${pdfSelect('font', 'PDF font', PDF_FONTS)}
+    ${pdfSelect('font', 'PDF body font', PDF_FONTS)}
+    ${pdfSelect('headFont', 'PDF heading font', { auto: 'Match journal heading font', same: 'Same as body (bold)', ...Object.fromEntries(Object.entries(PDF_FONTS).filter(([k]) => k !== 'auto')) })}
     ${pdfSelect('size', 'Page size', { a4: 'A4', letter: 'US Letter', tablet: 'Tablet (4:3)' })}
     ${pdfSelect('orient', 'Orientation', { portrait: 'Portrait', landscape: 'Landscape' })}
     ${pdfSelect('weekly', 'Weekly pages', { none: 'None', rows: 'Rows (one line per day)', grid: 'Grid (boxes + notes)', planner: 'Planner (days + priorities)' })}

@@ -64,3 +64,7 @@ A zero-dependency web app (static HTML/CSS/JS, open `index.html`) for building y
 - PDF export embeds the chosen font as an Identity-H CID TrueType font (real glyph widths, ToUnicode map so text is searchable/copyable). Font bytes are lazy-loaded from `fonts/<Name>.js` (base64) because `fetch()` is blocked on `file://`.
 - Bold is simulated with a text stroke; small-x-height faces get a size correction.
 - `tools/subset-fonts.py` and `tools/make-font-js.py` regenerate the font files.
+
+## Phase 5 — PDF heading font
+- Bold text in the PDF (titles, month names, day labels, tab names, buttons) can use its own heading font. Options: Match journal heading font (default), Same as body (bold), or any PDF font.
+- The writer now tracks every font actually used per document (resource registry), so it can embed two families at once (e.g. Caveat body + Playfair Display headings) and only writes what is used.
