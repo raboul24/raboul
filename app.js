@@ -377,7 +377,61 @@ async function exportPdf(btn) {
   btn.disabled = false; btn.textContent = label;
 }
 
-const fontOptions = cur => Object.entries(FONTS).map(([n, f]) => `<option value="${esc(f)}" style="font-family:${esc(f)}"${cur === f ? ' selected' : ''}>${n}</option>`).join('');
+/* Font pickers: a custom listbox so every option is drawn in its own typeface (native <select> can't do this everywhere). */
+const PDF_FONT_CSS = {
+  helvetica: 'Helvetica, Arial, sans-serif', times: '"Times New Roman", Times, serif', courier: '"Courier New", Courier, monospace',
+  caveat: 'Caveat, cursive', patrickhand: '"Patrick Hand", cursive', indieflower: '"Indie Flower", cursive', specialelite: '"Special Elite", monospace',
+  lora: 'Lora, serif', merriweather: 'Merriweather, serif', playfair: '"Playfair Display", serif', quicksand: 'Quicksand, sans-serif',
+};
+const webFontOpts = () => Object.entries(FONTS).map(([label, css]) => ({ value: css, label, css }));
+const pdfFontOpts = () => Object.entries(PDF_FONTS).map(([k, label]) => ({ value: k, label, css: PDF_FONT_CSS[k] || state.theme.font }));
+const FONT_PICKERS = {
+  setFont:     { title: 'Body font', opts: webFontOpts, get: () => state.theme.font, set: v => { state.theme.font = v; refresh(false); } },
+  setHeadFont: { title: 'Heading font', opts: () => [{ value: '', label: 'Same as body', css: state.theme.font }, ...webFontOpts()], get: () => state.theme.headFont || '', set: v => { state.theme.headFont = v; refresh(false); } },
+  pdfFont:     { title: 'PDF body font', opts: pdfFontOpts, get: () => pdfOpts().font, set: v => { state.pdf = { ...pdfOpts(), font: v }; save(); updatePdfEstimate(); } },
+  pdfHeadFont: {
+    title: 'PDF heading font',
+    opts: () => [{ value: 'auto', label: 'Match journal heading font', css: state.theme.headFont || state.theme.font }, { value: 'same', label: 'Same as body (bold)', css: state.theme.font }, ...pdfFontOpts().filter(o => o.value !== 'auto')],
+    get: () => pdfOpts().headFont, set: v => { state.pdf = { ...pdfOpts(), headFont: v }; save(); updatePdfEstimate(); },
+  },
+};
+function fontPickerInner(id) {
+  const P = FONT_PICKERS[id], opts = P.opts(), cur = P.get(), sel = opts.find(o => o.value === cur) || opts[0];
+  return `<button type="button" class="fp-btn" aria-haspopup="listbox" aria-expanded="false" style="font-family:${esc(sel.css)}"><span>${esc(sel.label)}</span><i aria-hidden="true">▾</i></button>
+    <ul class="fp-list" role="listbox" aria-label="${esc(P.title)}" hidden>${opts.map(o => `<li role="option" tabindex="-1" data-value="${esc(o.value)}" aria-selected="${o === sel}" style="font-family:${esc(o.css)}">${esc(o.label)}</li>`).join('')}</ul>`;
+}
+const fontPicker = id => `<div class="fp-row"><span>${FONT_PICKERS[id].title}</span><div class="fp" data-fp="${id}">${fontPickerInner(id)}</div></div>`;
+function syncFontPickers() { document.querySelectorAll('.fp').forEach(el => { el.innerHTML = fontPickerInner(el.dataset.fp); }); }
+function closeFontPickers(except) {
+  document.querySelectorAll('.fp').forEach(el => {
+    if (el === except) return;
+    el.querySelector('.fp-list').hidden = true; el.querySelector('.fp-btn').setAttribute('aria-expanded', 'false');
+  });
+}
+function toggleFontPicker(el, open) {
+  closeFontPickers(open ? el : null);
+  const list = el.querySelector('.fp-list'), btn = el.querySelector('.fp-btn');
+  list.hidden = !open; btn.setAttribute('aria-expanded', String(open));
+  if (open) { const cur = list.querySelector('[aria-selected="true"]') || list.firstElementChild; cur.scrollIntoView({ block: 'nearest' }); cur.focus({ preventScroll: true }); }
+  else btn.focus({ preventScroll: true });
+}
+document.addEventListener('click', e => {
+  const el = e.target.closest('.fp');
+  if (!el) return closeFontPickers(null);
+  const opt = e.target.closest('li[data-value]'), id = el.dataset.fp;
+  if (opt) { FONT_PICKERS[id].set(opt.dataset.value); syncFontPickers(); const f = document.querySelector('.font-sample'); if (f) f.style.fontFamily = 'var(--font)'; return; }
+  if (e.target.closest('.fp-btn')) toggleFontPicker(el, el.querySelector('.fp-list').hidden);
+});
+document.addEventListener('keydown', e => {
+  const el = e.target.closest && e.target.closest('.fp');
+  if (!el) return;
+  const list = el.querySelector('.fp-list'), items = [...list.children], i = items.indexOf(document.activeElement);
+  if (e.target.classList.contains('fp-btn')) { if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); toggleFontPicker(el, true); } return; }
+  if (e.key === 'ArrowDown') { e.preventDefault(); (items[i + 1] || items[0]).focus(); }
+  else if (e.key === 'ArrowUp') { e.preventDefault(); (items[i - 1] || items[items.length - 1]).focus(); }
+  else if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); document.activeElement.click(); }
+  else if (e.key === 'Escape') { e.stopImmediatePropagation(); toggleFontPicker(el, false); }
+});
 
 function renderSettings() {
   const s = $('settings');
@@ -400,8 +454,8 @@ function renderSettings() {
 
     <h3>Custom colors</h3>
     ${colorInput('paper', 'Page paper')}${colorInput('ink', 'Text')}${colorInput('accent', 'Links & accents')}${colorInput('bar', 'Top bar')}${colorInput('today', 'Today highlight')}
-    <label>Body font<select id="setFont" style="max-width:200px">${fontOptions(state.theme.font)}</select></label>
-    <label>Heading font<select id="setHeadFont" style="max-width:200px"><option value="">Same as body</option>${fontOptions(state.theme.headFont)}</select></label>
+    ${fontPicker('setFont')}
+    ${fontPicker('setHeadFont')}
     <p class="font-sample" style="font-family:var(--font)">The quick brown fox jumps over the lazy dog — 0123456789</p>
 
     <h3>Tabs</h3>
@@ -424,8 +478,8 @@ function renderSettings() {
     <h3>Export to PDF</h3>
     <p class="hint">Makes a hyperlinked PDF you can open in GoodNotes, Notability, Notes+ and similar apps. Tabs, calendar days, weeks and [[links]] stay tappable.</p>
     ${pdfSelect('look', 'Planner look', { soft: 'Soft planner (rounded, side tabs)', classic: 'Classic (top tabs, square)' })}
-    ${pdfSelect('font', 'PDF body font', PDF_FONTS)}
-    ${pdfSelect('headFont', 'PDF heading font', { auto: 'Match journal heading font', same: 'Same as body (bold)', ...Object.fromEntries(Object.entries(PDF_FONTS).filter(([k]) => k !== 'auto')) })}
+    ${fontPicker('pdfFont')}
+    ${fontPicker('pdfHeadFont')}
     ${pdfSelect('size', 'Page size', { a4: 'A4', letter: 'US Letter', tablet: 'Tablet (4:3)' })}
     ${pdfSelect('orient', 'Orientation', { portrait: 'Portrait', landscape: 'Landscape' })}
     ${pdfSelect('weekly', 'Weekly pages', { none: 'None', rows: 'Rows (one line per day)', grid: 'Grid (boxes + notes)', planner: 'Planner (days + priorities)' })}
@@ -465,8 +519,6 @@ document.addEventListener('change', e => {
   }
   if (t.id === 'setYear') { state.year = Math.min(2200, Math.max(1900, +t.value || state.year)); save(); }
   else if (t.id === 'setWeek') { state.weekStart = +t.value; refresh(false); }
-  else if (t.id === 'setFont') { state.theme.font = t.value; refresh(false); }
-  else if (t.id === 'setHeadFont') { state.theme.headFont = t.value; refresh(false); }
   else if (t.dataset.tabname !== undefined) { refresh(true); }
   else if (t.id === 'importFile' && t.files[0]) {
     const r = new FileReader();

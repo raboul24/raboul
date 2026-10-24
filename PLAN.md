@@ -78,3 +78,6 @@ A zero-dependency web app (static HTML/CSS/JS, open `index.html`) for building y
 - New pastel themes (Blush default, Sage, Boho, Sky, Lilac, Linen), each with a tab palette; picking a theme recolors the tabs ("Match tab colors to theme" re-applies it).
 - Web app: tabs down the right edge (top row on phones), dotted paper, banner headings with tape, rounded shadowed cells and cards.
 - PDF "Planner look": Soft (default) or Classic. Soft adds a rounded page card on a tinted mat, rotated side tabs, banner + tape titles, rounded cells/cards with shadows, month pills on the year page, rounded checkboxes.
+
+## Phase 8 — Font pickers
+- The four font menus (body, heading, PDF body, PDF heading) are custom listboxes: every option is drawn in its own typeface, which native `<select>` can't do on iOS/Safari. Keyboard support (arrows, Enter, Esc) and a check mark on the current choice.

@@ -193,3 +193,21 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .modal-card p { margin: 0 0 14px; line-height: 1.4; }
 .modal-card .row { justify-content: flex-end; }
 .toast { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); z-index: 40; max-width: min(520px, calc(100vw - 32px)); background: var(--ink); color: var(--paper); padding: 10px 16px; border-radius: 8px; font: .9rem system-ui, sans-serif; box-shadow: 0 6px 20px rgba(0,0,0,.3); }
+
+/* Font pickers */
+.fp-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin: 6px 0; }
+.fp { position: relative; width: 220px; max-width: 62%; }
+.fp-btn {
+  width: 100%; display: flex; justify-content: space-between; align-items: center; gap: 6px; text-align: left;
+  padding: 5px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--paper); cursor: pointer; font-size: 1rem;
+}
+.fp-btn span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fp-btn:hover, .fp-btn[aria-expanded="true"] { border-color: var(--accent); }
+.fp-list {
+  position: absolute; z-index: 20; left: 0; right: 0; top: calc(100% + 4px); max-height: 300px; overflow-y: auto; margin: 0; padding: 4px; list-style: none;
+  background: var(--paper); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 10px 28px rgba(0,0,0,.22);
+}
+.fp-list[hidden] { display: none; }
+.fp-list li { padding: 6px 10px; border-radius: 6px; cursor: pointer; font-size: 1.05rem; line-height: 1.25; }
+.fp-list li:hover, .fp-list li:focus { background: var(--tint); outline: none; }
+.fp-list li[aria-selected="true"]::after { content: " ✓"; color: var(--accent); }
