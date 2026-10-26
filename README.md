@@ -1,7 +1,26 @@
 # Calendar Journal
 
-A customizable calendar journal that runs in the browser: linked tabs and pages, colored pages and covers,
-three planner looks, 18 fonts, and a hyperlinked PDF export for GoodNotes, Notability and Notes+.
+A planner builder that runs in the browser. You design a planner, see the real pages in a live preview, and export a
+hyperlinked PDF (tappable tabs, dates and `[[links]]`) for GoodNotes, Notability or Notes+.
+
+## Using the app
+
+The app is four steps, with a live preview of the actual PDF pages on the right and an **Export PDF** button that is
+always visible at the bottom:
+
+| Step | What you do |
+|---|---|
+| **Style** | Pick a *starting point* (one tap sets colors together), the *look* (Elegant, Soft, Classic), then change each color layer on its own: **page color**, **accent color** and **tab colors**. Choose fonts for titles, headings and body text, and a **cover**. |
+| **Pages** | Choose a layout (full year, academic, ...), the year and week start, then which pages to include: cover, weekly pages, daily pages, notes pages. Add **dates & events** (birthdays, appointments) that print on the matching pages. |
+| **Tabs** | Rename, recolor, reorder, add and remove tabs. Notes tabs can carry text that prints on the page. |
+| **Export** | Page size (A4, Letter, Tablet), orientation, plain-white option, then export. |
+
+**The three color layers are independent**: changing the page color never changes the accent or the tabs, and so on.
+The only automatic adjustments are for readability: text turns light on dark pages, and the accent and tab markers are
+lightened a little on dark pages (your chosen accent is remembered and comes back on a light page).
+
+Click a tab or date in the preview to jump there, exactly as the PDF will behave. The **⋯** menu has backup (JSON), restore,
+reset, and (with the Java server) search.
 
 There are **two ways to run it**:
 
@@ -31,7 +50,7 @@ mvn spring-boot:run
 ```
 Then open **http://localhost:8080**. The same Java server serves the app and the API, so there is nothing else to start.
 
-Open **Customize**. If the server was found you will see a **Search entries** box. Your journal is saved to
+Open the **⋯** menu. If the server was found you will see **Search entries…**. Your journal is saved to
 `backend/data/journal.json` about a second after each change.
 
 Prefer a single jar? `cd backend && mvn package && java -jar target/journal-backend-1.0.0.jar`.
@@ -58,7 +77,7 @@ backend/data/backups/journal-N.json  the last 10 older versions (restore by copy
  │ localStorage  (always used)  │ ───────────────────► │ JournalController  (REST)   │
  │ + connectToServer() in app.js│   GET/PUT /api/journal│ JournalStore  (JSON files)  │
  │   (does nothing if no server)│ ◄──────────────────► │ SearchService (full text)   │
- │ search box in Customize      │   GET /api/search     │ StaticFilesController       │
+ │ Search in the ⋯ menu          │   GET /api/search     │ StaticFilesController       │
  └──────────────────────────────┘                       │   (serves index.html, ...)  │
                                                         └─────────────────────────────┘
 ```
@@ -107,7 +126,7 @@ Covers saving/revisions/conflicts/backups, search ranking and snippets, the HTTP
 ```bash
 cd tests
 npm install                      # once; installs Playwright, then: npx playwright install chromium
-npm test                         # front end + PDF export (opens index.html as a file)
+npm test                         # interface, colors, live preview, fonts, PDF export, hosted mode (opens index.html as a file)
 ```
 `npm test` also checks every link inside the generated PDFs if `python3` and `pypdf` (`pip install pypdf`) are available.
 

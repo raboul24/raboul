@@ -94,3 +94,11 @@ A zero-dependency web app (static HTML/CSS/JS, open `index.html`) for building y
 - `app.js` gained one optional section: `connectToServer()` (no-op without a server), push-after-save, a conflict dialog, and a search box in Customize. `askConfirm` got a `cancelLabel` parameter.
 - The hosted claude.ai copy is unchanged and cannot use the server.
 - `tests/` now holds the browser tests (they used to live outside the repo); `backend/src/test` holds 25 JUnit 5 tests.
+
+## Phase 11 — Planner builder interface
+- The app is now a builder, not a journal reader: Style / Pages / Tabs / Export steps on the left, a live preview of the real PDF page on the right, an always-visible Export bar. The in-app day/notes pages are gone; dates and notes text are entered as "Dates & events" and per-notes-tab text and print onto the PDF.
+- Preview: `pdf.js` records each drawn page as plain data (`Pg.vec`) and `JournalPDF.paint()` draws it on a canvas, so the preview is produced by the same code as the PDF. Links in the preview are clickable.
+- Colors untangled into three independent layers (page color, accent, tab palette) plus one-tap "starting points". Dark pages lighten the accent/tab markers automatically; the chosen accent is remembered (`theme.accentBase`). Hand-colored tabs switch the palette to "custom" and are never overwritten.
+- Fonts: titles / headings / body are chosen directly as PDF fonts (`state.pdf.font`, `headFont`, `titleFont`); the old web-font stacks are only kept for compatibility.
+- Old saved journals are migrated on load (`migrate()` in app.js). The Java server and its API are unchanged; Search moved to the ⋯ menu.
+- UI chrome follows the device's light/dark setting. On tablets and phones the preview sits above the controls.

@@ -19,6 +19,5 @@ const { chromium } = require('playwright'); const fs=require('fs');
     },[c]);
     fs.writeFileSync(`${OUT}/h_${name}.pdf`,Buffer.from(r.b64,'base64')); console.log(name,r.n);
   }
-  await p.click('#settingsBtn'); console.log('ui head options:', await p.locator('[data-pdf="headFont"] option').count());
   console.log('errors',errs); await b.close();
 })();

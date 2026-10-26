@@ -2,28 +2,50 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Calendar Journal</title>
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-<header class="topbar">
-  <a class="brand" href="#/tab/index" id="brand">Journal</a>
-  <div class="topbar-actions">
-    <button class="btn" id="backBtn" hidden>Back</button>
-    <a class="btn" id="todayBtn" href="#/day/today">Today</a>
-    <button class="btn" id="settingsBtn" aria-expanded="false" aria-controls="settings">⚙ Customize</button>
-  </div>
-</header>
+<div class="app">
+  <header class="appbar">
+    <div class="brand">
+      <span class="logo" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="5" width="16" height="15" rx="3"/><path d="M8 3v4M16 3v4M4 10h16"/></svg></span>
+      <input id="titleInput" class="title-input" type="text" maxlength="60" placeholder="Name your planner" aria-label="Planner title">
+    </div>
+    <nav class="steps" id="steps" role="tablist" aria-label="Steps"></nav>
+    <div class="menu-wrap">
+      <button type="button" class="icon-btn" id="moreBtn" aria-haspopup="menu" aria-expanded="false" aria-label="More options"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg></button>
+      <div class="menu" id="moreMenu" role="menu" hidden>
+        <button type="button" id="menuSearch" role="menuitem" hidden>Search entries…</button>
+        <button type="button" id="menuBackup" role="menuitem">Back up journal (JSON)</button>
+        <button type="button" id="menuRestore" role="menuitem">Restore from backup…</button>
+        <button type="button" id="menuReset" role="menuitem" class="danger">Reset everything…</button>
+      </div>
+    </div>
+  </header>
 
-<main class="book">
-  <div class="sections" id="sections"></div>
-  <article class="page" id="page"></article>
-  <nav class="tabs" id="tabs" aria-label="Journal tabs"></nav>
-</main>
+  <main class="workspace">
+    <section class="panel" id="panel" aria-label="Settings"></section>
+    <section class="stage" aria-label="Live preview of your PDF">
+      <div class="stage-bar">
+        <button type="button" class="icon-btn" id="prevPage" aria-label="Previous page"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 6-6 6 6 6"/></svg></button>
+        <select id="jump" aria-label="Jump to page"></select>
+        <span id="pageNum" class="page-num"></span>
+        <button type="button" class="icon-btn" id="nextPage" aria-label="Next page"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg></button>
+      </div>
+      <div class="sheet-box" id="sheetBox"><canvas id="sheet" role="img" aria-label="Page preview. Tabs and dates on the page are clickable."></canvas></div>
+      <div class="thumbs" id="thumbs"></div>
+    </section>
+  </main>
 
-<aside class="settings" id="settings" hidden aria-label="Customize journal"></aside>
+  <footer class="exportbar">
+    <span id="exportInfo" class="export-info"></span>
+    <button type="button" class="btn btn-primary" id="exportBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m0 0-4-4m4 4 4-4"/><path d="M5 21h14"/></svg><span>Export PDF</span></button>
+  </footer>
+</div>
 
+<input type="file" id="importFile" accept="application/json" hidden>
 <div class="modal" id="modal" hidden></div>
 <div class="toast" id="toast" role="status" hidden></div>
 

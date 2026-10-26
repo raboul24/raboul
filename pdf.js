@@ -45,6 +45,8 @@ function enc(s) {
   }
   return o;
 }
+/* the text as the PDF will really show it: characters outside Windows-1252 become '?' */
+const visibleText = s => { let o = ''; for (const ch of s) { const c = ch.codePointAt(0); o += (c >= 32 && c < 0x7F) || (c >= 0xA0 && c <= 0xFF) || CP[c] ? ch : c === 9 ? ' ' : '?'; } return o; };
 const pdfStr = s => '(' + enc(s).replace(/[\\()]/g, m => '\\' + m) + ')';
 const latin1 = s => { const u = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) u[i] = s.charCodeAt(i) & 255; return u; };
 
@@ -231,31 +233,36 @@ function fontRes(key, bold) {
 }
 
 class Pg {
-  constructor(W, H) { this.W = W; this.H = H; this.ops = []; this.links = []; }
+  /* ops = the PDF content stream; vec = the same drawing as plain data, used to paint the on-screen preview */
+  constructor(W, H) { this.W = W; this.H = H; this.ops = []; this.links = []; this.vec = []; }
   rect(x, y, w, h, fill, stroke, lw) {
     const r = this.soft && w >= 14 && h >= 14 && w < this.W - 1 ? Math.min(7, h / 4, w / 4) : 0;
     if (r) {                                                       // soft look: rounded corners + a faint drop shadow on filled cards
       if (fill && w > 40 && h > 24 && this.shadow) this.rrect(x + 1, y + 2, w, h, r, this.shadow, null);
       this.rrect(x, y, w, h, r, fill, stroke, lw); return;
     }
+    this.vec.push(['rect', x, y, w, h, fill || null, stroke || null, lw || 0.6]);
     let o = '';
     if (fill) o += rg(fill) + ' rg ';
     if (stroke) o += rg(stroke) + ' RG ' + (lw || 0.6) + ' w ';
     this.ops.push(`${o}${f(x)} ${f(this.H - y - h)} ${f(w)} ${f(h)} re ${fill && stroke ? 'B' : fill ? 'f' : 'S'}`);
   }
   rrect(x, y, w, h, r, fill, stroke, lw) {
+    this.vec.push(['rrect', x, y, w, h, r, fill || null, stroke || null, lw || 0.6]);
     const k = 0.5523 * r, x0 = x, x1 = x + w, y0 = this.H - y - h, y1 = this.H - y, n = v => f(v);
     let o = '';
     if (fill) o += rg(fill) + ' rg ';
     if (stroke) o += rg(stroke) + ' RG ' + (lw || 0.6) + ' w ';
     this.ops.push(`${o}${n(x0 + r)} ${n(y0)} m ${n(x1 - r)} ${n(y0)} l ${n(x1 - r + k)} ${n(y0)} ${n(x1)} ${n(y0 + r - k)} ${n(x1)} ${n(y0 + r)} c ${n(x1)} ${n(y1 - r)} l ${n(x1)} ${n(y1 - r + k)} ${n(x1 - r + k)} ${n(y1)} ${n(x1 - r)} ${n(y1)} c ${n(x0 + r)} ${n(y1)} l ${n(x0 + r - k)} ${n(y1)} ${n(x0)} ${n(y1 - r + k)} ${n(x0)} ${n(y1 - r)} c ${n(x0)} ${n(y0 + r)} l ${n(x0)} ${n(y0 + r - k)} ${n(x0 + r - k)} ${n(y0)} ${n(x0 + r)} ${n(y0)} c h ${fill && stroke ? 'B' : fill ? 'f' : 'S'}`);
   }
-  fillRect(x, y, w, h, fill) { this.ops.push(`${rg(fill)} rg ${f(x)} ${f(this.H - y - h)} ${f(w)} ${f(h)} re f`); }
-  strokeRect(x, y, w, h, stroke, lw) { this.ops.push(`${rg(stroke)} RG ${lw || 0.5} w ${f(x)} ${f(this.H - y - h)} ${f(w)} ${f(h)} re S`); }
+  fillRect(x, y, w, h, fill) { this.vec.push(['rect', x, y, w, h, fill, null, 0]); this.ops.push(`${rg(fill)} rg ${f(x)} ${f(this.H - y - h)} ${f(w)} ${f(h)} re f`); }
+  strokeRect(x, y, w, h, stroke, lw) { this.vec.push(['rect', x, y, w, h, null, stroke, lw || 0.5]); this.ops.push(`${rg(stroke)} RG ${lw || 0.5} w ${f(x)} ${f(this.H - y - h)} ${f(w)} ${f(h)} re S`); }
   poly(pts, fill) {
+    this.vec.push(['poly', pts, fill]);
     this.ops.push(`${rg(fill)} rg ` + pts.map(([x, y], i) => `${f(x)} ${f(this.H - y)} ${i ? 'l' : 'm'}`).join(' ') + ' h f');
   }
   polyline(pts, stroke, lw, closed) {
+    this.vec.push(['polyline', pts, stroke, lw || 0.5, !!closed]);
     this.ops.push(`${rg(stroke)} RG ${lw || 0.5} w 1 j 1 J ` + pts.map(([x, y], i) => `${f(x)} ${f(this.H - y)} ${i ? 'l' : 'm'}`).join(' ') + (closed ? ' s' : ' S'));
   }
   circleStroke(cx, cy, r, stroke, lw) {
@@ -263,14 +270,17 @@ class Pg {
     this.polyline(pts, stroke, lw, true);
   }
   dashed(x1, y, x2, c, lw, on, off) {
+    this.vec.push(['dashed', x1, y, x2, c, lw || 0.5, on, off]);
     this.ops.push(`q ${rg(c)} RG ${lw || 0.5} w 1 J [${on} ${off}] 0 d ${f(x1)} ${f(this.H - y)} m ${f(x2)} ${f(this.H - y)} l S Q`);
   }
   circle(cx, cy, r, fill) {
+    this.vec.push(['circle', cx, cy, r, fill]);
     const k = 0.5523 * r, X = cx, Y = this.H - cy;
     this.ops.push(`${rg(fill)} rg ${f(X + r)} ${f(Y)} m ${f(X + r)} ${f(Y + k)} ${f(X + k)} ${f(Y + r)} ${f(X)} ${f(Y + r)} c ${f(X - k)} ${f(Y + r)} ${f(X - r)} ${f(Y + k)} ${f(X - r)} ${f(Y)} c ${f(X - r)} ${f(Y - k)} ${f(X - k)} ${f(Y - r)} ${f(X)} ${f(Y - r)} c ${f(X + k)} ${f(Y - r)} ${f(X + r)} ${f(Y - k)} ${f(X + r)} ${f(Y)} c f`);
   }
   /* washi tape: a rotated strip with diagonal stripes */
   tape(cx, cy, w, h, deg, c1, c2) {
+    this.vec.push(['tape', cx, cy, w, h, deg, c1, c2]);
     const a = deg * Math.PI / 180, co = Math.cos(a), si = Math.sin(a), o = [];
     o.push(`q ${f(co)} ${f(-si)} ${f(si)} ${f(co)} ${f(cx)} ${f(this.H - cy)} cm`);
     o.push(`${rg(c1)} rg ${f(-w / 2)} ${f(-h / 2)} ${f(w)} ${f(h)} re f`);
@@ -279,14 +289,16 @@ class Pg {
     o.push('Q');
     this.ops.push(o.join(' '));
   }
-  line(x1, y1, x2, y2, c, lw) { this.ops.push(`${rg(c)} RG ${lw || 0.5} w ${f(x1)} ${f(this.H - y1)} m ${f(x2)} ${f(this.H - y2)} l S`); }
+  line(x1, y1, x2, y2, c, lw) { this.vec.push(['line', x1, y1, x2, y2, c, lw || 0.5]); this.ops.push(`${rg(c)} RG ${lw || 0.5} w ${f(x1)} ${f(this.H - y1)} m ${f(x2)} ${f(this.H - y2)} l S`); }
   dots(x, y, w, h, step, c) {
+    this.vec.push(['dots', x, y, w, h, step, c]);
     this.ops.push(`q ${rg(c)} RG 1.4 w 1 J [0 ${step}] 0 d`);
     for (let yy = y; yy <= y + h + 0.1; yy += step) this.ops.push(`${f(x)} ${f(this.H - yy)} m ${f(x + w)} ${f(this.H - yy)} l S`);
     this.ops.push('Q');
   }
   text(x, y, s, size, color, bold, rot, role, cs) {
     const key = faceFor(bold, role), F = emb(key), tm = `${cs ? f(cs) + ' Tc ' : ''}${rot ? '0 -1 1 0' : '1 0 0 1'} ${f(x)} ${f(this.H - y)} Tm`;
+    this.vec.push(['text', x, y, visibleText(s), F ? size * (SCALE[key] || 1) : size, color, key, !!bold, !!rot, cs || 0, !!(F && bold && !curHead && !role)]);
     if (F) {                                   // embedded CID font: hex glyph ids; faux bold (stroke) only when there is no heading font
       const hexs = gidsOf(F, s).map(g => g.toString(16).padStart(4, '0')).join(''), fake = bold && !curHead && !role;
       this.ops.push(`q ${fake ? `${rg(color)} RG ${f(size * 0.03)} w 2 Tr ` : ''}BT /${fontRes(key, false)} ${f(size * (SCALE[key] || 1))} Tf ${rg(color)} rg ${tm} <${hexs}> Tj ET Q`);
@@ -896,7 +908,9 @@ function session(state, optsIn) {
     }
   }
 
+  const Mval = M;
   const draw = spec => {
+    curBody = fontKey; curHead = headKey; curTitle = titleKey; curLegend = legendKey; M = Mval;   // other sessions may have run since this one was planned
     const pg = new Pg(W, H); pg.soft = ROUNDED; pg.shadow = SOFT ? C.shadow : null;
     ({ cover: coverPage, index: indexPage, year: yearPage, month: monthPage, week: weekPage, day: dayPage, notes: notesPage })[spec.type](pg, spec);
     return pg;
@@ -986,7 +1000,79 @@ async function generate(state, opts) {
   return new Blob(chunks, { type: 'application/pdf' });
 }
 
+/* ---------- on-screen preview: paint a page's recorded drawing onto a canvas ---------- */
+const CSS_FAMILY = {
+  helvetica: 'Helvetica, Arial, sans-serif', times: '"Times New Roman", Times, serif', courier: '"Courier New", Courier, monospace',
+  caveat: 'Caveat, cursive', patrickhand: '"Patrick Hand", cursive', indieflower: '"Indie Flower", cursive', specialelite: '"Special Elite", monospace',
+  lora: 'Lora, serif', merriweather: 'Merriweather, serif', playfair: '"Playfair Display", serif', quicksand: 'Quicksand, sans-serif',
+  greatvibes: '"Great Vibes", cursive', cormorant: '"Cormorant Garamond", serif', cormorantitalic: '"Cormorant Garamond", serif',
+};
+function paint(canvas, page, W) {
+  const ctx = canvas.getContext('2d'), k = canvas.width / W;
+  ctx.setTransform(k, 0, 0, k, 0, 0);
+  ctx.clearRect(0, 0, W, canvas.height / k);
+  const path = pts => { ctx.beginPath(); pts.forEach(([x, y], i) => i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)); };
+  const round = (x, y, w, h, r) => { ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath(); };
+  const paintShape = (fill, stroke, lw) => { if (fill) { ctx.fillStyle = fill; ctx.fill(); } if (stroke) { ctx.strokeStyle = stroke; ctx.lineWidth = lw; ctx.stroke(); } };
+  ctx.lineJoin = 'round';
+  for (const op of page.vec) {
+    ctx.setLineDash([]); ctx.lineCap = 'butt';
+    switch (op[0]) {
+      case 'rect': { const [, x, y, w, h, fill, stroke, lw] = op; ctx.beginPath(); ctx.rect(x, y, w, h); paintShape(fill, stroke, lw); break; }
+      case 'rrect': { const [, x, y, w, h, r, fill, stroke, lw] = op; round(x, y, w, h, r); paintShape(fill, stroke, lw); break; }
+      case 'poly': { path(op[1]); ctx.closePath(); ctx.fillStyle = op[2]; ctx.fill(); break; }
+      case 'polyline': { ctx.lineCap = 'round'; path(op[1]); if (op[4]) ctx.closePath(); ctx.strokeStyle = op[2]; ctx.lineWidth = op[3]; ctx.stroke(); break; }
+      case 'line': { ctx.beginPath(); ctx.moveTo(op[1], op[2]); ctx.lineTo(op[3], op[4]); ctx.strokeStyle = op[5]; ctx.lineWidth = op[6]; ctx.stroke(); break; }
+      case 'dashed': { ctx.lineCap = 'round'; ctx.setLineDash([op[6], op[7]]); ctx.beginPath(); ctx.moveTo(op[1], op[2]); ctx.lineTo(op[3], op[2]); ctx.strokeStyle = op[4]; ctx.lineWidth = op[5]; ctx.stroke(); break; }
+      case 'dots': { const [, x, y, w, h, step, c] = op; ctx.lineCap = 'round'; ctx.setLineDash([0, step]); ctx.strokeStyle = c; ctx.lineWidth = 1.4; for (let yy = y; yy <= y + h + 0.1; yy += step) { ctx.beginPath(); ctx.moveTo(x, yy); ctx.lineTo(x + w, yy); ctx.stroke(); } break; }
+      case 'circle': { ctx.beginPath(); ctx.arc(op[1], op[2], op[3], 0, Math.PI * 2); ctx.fillStyle = op[4]; ctx.fill(); break; }
+      case 'tape': {
+        const [, cx, cy, w, h, deg, c1, c2] = op; ctx.save(); ctx.translate(cx, cy); ctx.rotate(deg * Math.PI / 180);
+        ctx.fillStyle = c1; ctx.fillRect(-w / 2, -h / 2, w, h); ctx.beginPath(); ctx.rect(-w / 2, -h / 2, w, h); ctx.clip();
+        ctx.strokeStyle = c2; ctx.lineWidth = 3; for (let x = -w / 2 - h; x < w / 2; x += 9) { ctx.beginPath(); ctx.moveTo(x, h / 2); ctx.lineTo(x + h, -h / 2); ctx.stroke(); }
+        ctx.restore(); break;
+      }
+      case 'text': {
+        const [, x, y, s, size, color, key, bold, rot, cs, fake] = op;
+        ctx.save(); ctx.translate(x, y); if (rot) ctx.rotate(Math.PI / 2);
+        ctx.font = `${key === 'cormorantitalic' ? 'italic ' : ''}${bold && BUILTIN[key] ? 'bold ' : ''}${size}px ${CSS_FAMILY[key] || CSS_FAMILY.helvetica}`;
+        ctx.fillStyle = color; ctx.strokeStyle = color; ctx.lineWidth = size * 0.03; ctx.lineJoin = 'round';
+        if (cs) { let dx = 0; for (const ch of s) { ctx.fillText(ch, dx, 0); if (fake) ctx.strokeText(ch, dx, 0); dx += ctx.measureText(ch).width + cs; } }
+        else { ctx.fillText(s, 0, 0); if (fake) ctx.strokeText(s, 0, 0); }
+        ctx.restore(); break;
+      }
+      default: break;
+    }
+  }
+}
+
+/* A preview session: the planned pages of the PDF, drawn one at a time on demand (no PDF file is built). */
+function previewSession(state, opts) {
+  const S = session(state, opts), cache = new Map();
+  const label = spec => {
+    switch (spec.type) {
+      case 'cover': return 'Cover';
+      case 'index': return 'Home';
+      case 'year': return 'Calendar';
+      case 'month': return `${MONTHS[spec.tab.month]} ${spec.tab.year}`;
+      case 'week': return `Week of ${shortDate(spec.ws)}`;
+      case 'day': return `Day: ${shortDate(spec.date)}`;
+      default: return spec.tab.name + (spec.part ? ` (page ${spec.part + 1})` : '');
+    }
+  };
+  return {
+    count: S.specs.length, W: S.W, H: S.H,
+    type: i => S.specs[i].type,
+    label: i => label(S.specs[i]),
+    page: i => { if (!cache.has(i)) { const pg = S.draw(S.specs[i]); cache.set(i, { vec: pg.vec, links: pg.links.filter(l => S.first.has(l.key)).map(l => ({ ...l, page: S.first.get(l.key) })) }); } return cache.get(i); },
+    firstOfType: type => S.specs.findIndex(s => s.type === type),
+    fonts: [...fontKeys(state, { ...DEFAULTS, ...opts })],
+  };
+}
+
 window.JournalPDF = {
+  paint, previewSession, CSS_FAMILY,
+  resolvedFonts: (state, opts) => { const o = { ...DEFAULTS, ...opts }; return { body: resolveFont(state, o), head: resolveHead(state, o), title: resolveTitle(state, o) }; },
   DEFAULTS, generate,
   ready: (state, opts) => { const o = { ...DEFAULTS, ...opts }; return Promise.all(fontKeys(state, o).map(loadFont)).catch(() => {}); },
   count: (state, opts) => session(state, opts).count,
